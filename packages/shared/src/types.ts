@@ -60,6 +60,7 @@ export type FieldType =
   | "text"
   | "date"
   | "boolean"
+  | "address"
   | "photo"
   | "select"
   | "multiselect";
