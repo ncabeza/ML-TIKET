@@ -52,3 +52,7 @@ Worker ML (Railway / Render / Fly.io)
 - `POST /normalize`
 
 These files provide a blueprint for the production implementation, preserving the enterprise constraints described in the specification.
+
+## Validation flow
+
+- 📄 Detailed Spanish overview: [`docs/validation-flow-es.md`](docs/validation-flow-es.md)
