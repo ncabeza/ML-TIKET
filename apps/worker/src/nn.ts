@@ -78,11 +78,65 @@ const TOKEN_LEXICON: Record<(keyof FeatureVector), string[]> = {
   lengthPenalty: [],
 };
 
+const PHOTO_TOKENS = ["foto", "photo", "imagen", "image", "picture", "selfie", "url", "link"];
+const ADDRESS_TOKENS = [
+  "direccion",
+  "dirección",
+  "address",
+  "calle",
+  "street",
+  "avenida",
+  "avenue",
+  "ciudad",
+  "city",
+  "state",
+  "provincia",
+  "postal",
+  "zip",
+  "codigo postal",
+];
+
 function tokenize(name: string): string[] {
   return name
     .split(/[^\p{L}\p{N}]+/u)
     .map((t) => t.toLowerCase())
     .filter(Boolean);
+}
+
+function detectSpecializedType(tokens: string[]):
+  | { type: FieldType; confidence: number; evidence: string[] }
+  | null {
+  const photoHits = tokens.filter((token) =>
+    PHOTO_TOKENS.some((hint) => token.includes(hint))
+  );
+
+  if (photoHits.length > 0) {
+    return {
+      type: "photo",
+      confidence: 0.93,
+      evidence: [
+        "La columna incluye vocabulario de imagen/foto; se sugiere un campo de captura o URL.",
+        `Tokens de soporte: ${photoHits.join(", ")}`,
+      ],
+    };
+  }
+
+  const addressHits = tokens.filter((token) =>
+    ADDRESS_TOKENS.some((hint) => token.includes(hint))
+  );
+
+  if (addressHits.length > 0) {
+    return {
+      type: "address",
+      confidence: 0.88,
+      evidence: [
+        "Se detectaron términos geográficos; conviene mapear a un campo de dirección/ubicación.",
+        `Tokens de soporte: ${addressHits.join(", ")}`,
+      ],
+    };
+  }
+
+  return null;
 }
 
 function buildFeatures(column: string): FeatureVector {
@@ -134,12 +188,19 @@ export function scoreFieldTypes(columnName: string): Array<{ type: FieldType; sc
 }
 
 export function inferFieldType(columnName: string): { type: FieldType; confidence: number; evidence: string[] } {
+  const tokens = tokenize(columnName);
+  const specialized = detectSpecializedType(tokens);
+
+  if (specialized) {
+    return specialized;
+  }
+
   const scores = scoreFieldTypes(columnName);
   const best = scores.reduce((top, current) => (current.score > top.score ? current : top), scores[0]);
 
   const evidence = [
     `MLP scores ${best.type} at ${(best.score * 100).toFixed(1)}% based on lexical cues`,
-    `Tokens: ${tokenize(columnName).join(", ") || "<none>"}`,
+    `Tokens: ${tokens.join(", ") || "<none>"}`,
   ];
 
   return { type: best.type, confidence: best.score, evidence };
