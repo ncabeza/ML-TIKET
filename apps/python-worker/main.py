@@ -28,13 +28,12 @@ def _load_excel(
     sample_rows: int = 50,
     *,
     max_rows_per_sheet: int = 50_000,
-    chunk_size: int = 2_000,
 ) -> List[Dict[str, Any]]:
     """Load the Excel workbook and extract lightweight previews per sheet.
 
-    The parser keeps memory usage bounded by reading each sheet in chunks and
-    capping the number of scanned rows. A truncated flag indicates when a sheet
-    exceeded the configured ceiling so callers can react accordingly.
+    The parser keeps memory usage bounded by capping the number of scanned rows.
+    A truncated flag indicates when a sheet exceeded the configured ceiling so
+    callers can react accordingly.
     """
 
     if not file_bytes:
@@ -48,46 +47,36 @@ def _load_excel(
     sheets: List[Dict[str, Any]] = []
 
     for sheet_name in workbook.sheet_names:
-        preview_rows: List[Dict[str, Any]] = []
-        total_rows = 0
         truncated = False
-        columns: List[str] = []
-
-        chunk_iterator = pd.read_excel(
+        frame = pd.read_excel(
             workbook,
             sheet_name=sheet_name,
             dtype=str,
-            chunksize=chunk_size,
+            nrows=max_rows_per_sheet + 1,
             engine=workbook.engine,
         )
 
-        for chunk in chunk_iterator:
-            if not columns:
-                columns = list(chunk.columns)
+        columns: List[str] = list(frame.columns)
+        filled = frame.fillna("")
+        records = filled.to_dict(orient="records")
 
-            filled_chunk = chunk.fillna("")
-            records = filled_chunk.to_dict(orient="records")
-
-            if len(preview_rows) < sample_rows:
-                remaining = sample_rows - len(preview_rows)
-                preview_rows.extend(records[:remaining])
-
-            total_rows += len(records)
-
-            if total_rows >= max_rows_per_sheet:
-                truncated = True
-                total_rows = max_rows_per_sheet
-                break
+        if len(records) > max_rows_per_sheet:
+            truncated = True
+            records = records[:max_rows_per_sheet]
 
         if not columns:
             empty_frame = workbook.parse(sheet_name, nrows=0, dtype=str)
             columns = list(empty_frame.columns)
 
+        preview_rows = records[:sample_rows]
+        sample_row_count = len(preview_rows)
+        total_rows = len(records)
+
         sheets.append(
             {
                 "sheet": sheet_name,
                 "columns": columns,
-                "sample_row_count": min(len(preview_rows), sample_rows),
+                "sample_row_count": sample_row_count,
                 "preview_rows": preview_rows,
                 "total_rows": total_rows,
                 "truncated": truncated,
