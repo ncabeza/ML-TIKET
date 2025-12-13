@@ -1,5 +1,10 @@
 import { ImportJob, ImportMode, PreviewPayload, TemplateSuggestionResult } from "@shared/types";
-import { orchestratePreview, orchestrateRun, proposeTemplateDecision } from "./orchestration";
+import {
+  analyzeJobDiagnostics,
+  orchestratePreview,
+  orchestrateRun,
+  proposeTemplateDecision,
+} from "./orchestration";
 import { persistJob, findJobById } from "./persistence";
 
 // The following handlers are written as Vercel-style serverless functions.
@@ -59,4 +64,13 @@ export async function getErrors(jobId: string) {
   const job = await findJobById(jobId);
   if (!job) throw new Error("Job not found");
   return job.errors_ref;
+}
+
+export async function analyzePossibleErrors(jobId: string) {
+  const job = await findJobById(jobId);
+  if (!job) {
+    throw new Error("Job not found");
+  }
+
+  return analyzeJobDiagnostics(job);
 }

@@ -42,6 +42,19 @@ export interface MLInsights {
   technician_assignment?: TechnicianAssignmentInsight;
 }
 
+export interface DiagnosticIssue {
+  level: "error" | "warning";
+  code: string;
+  message: string;
+  recommendation?: string;
+}
+
+export interface JobDiagnostics {
+  job_id: string;
+  ready_to_run: boolean;
+  issues: DiagnosticIssue[];
+}
+
 export type FieldType =
   | "number"
   | "text"
