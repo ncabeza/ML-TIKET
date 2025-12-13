@@ -6,10 +6,11 @@ other services can call during the preview/run phases of the import
 pipeline.
 """
 from io import BytesIO
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+import asyncio
 import pandas as pd
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 app = FastAPI(
@@ -28,6 +29,7 @@ def _load_excel(
     sample_rows: int = 50,
     *,
     max_rows_per_sheet: int = 50_000,
+    sheet_names: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Load the Excel workbook and extract lightweight previews per sheet.
 
@@ -47,6 +49,8 @@ def _load_excel(
     sheets: List[Dict[str, Any]] = []
 
     for sheet_name in workbook.sheet_names:
+        if sheet_names and sheet_name not in sheet_names:
+            continue
         truncated = False
         frame = pd.read_excel(
             workbook,
@@ -86,6 +90,99 @@ def _load_excel(
     return sheets
 
 
+async def _load_excel_async(
+    file_bytes: bytes,
+    *,
+    sample_rows: int = 50,
+    max_rows_per_sheet: int = 50_000,
+    sheet_names: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Run the CPU-bound Excel parsing in a thread executor."""
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: _load_excel(
+            file_bytes,
+            sample_rows=sample_rows,
+            max_rows_per_sheet=max_rows_per_sheet,
+            sheet_names=sheet_names,
+        ),
+    )
+
+
+class ExcelProcessingQueue:
+    """Tiny FIFO queue to serialize Excel parsing tasks.
+
+    This keeps concurrent uploads from overwhelming the server while still
+    keeping the FastAPI handlers async-friendly.
+    """
+
+    def __init__(self) -> None:
+        self._queue: asyncio.Queue[
+            tuple[Callable[[], Awaitable[Any]], asyncio.Future[Any]]
+        ] = asyncio.Queue()
+        self._worker_started = False
+
+    async def _ensure_worker(self) -> None:
+        if self._worker_started:
+            return
+        self._worker_started = True
+        asyncio.create_task(self._worker())
+
+    async def _worker(self) -> None:
+        while True:
+            coro_factory, future = await self._queue.get()
+            try:
+                result = await coro_factory()
+            except Exception as exc:  # pragma: no cover - defensive
+                future.set_exception(exc)
+            else:
+                future.set_result(result)
+            finally:
+                self._queue.task_done()
+
+    async def enqueue(self, coro_factory: Callable[[], Awaitable[Any]]) -> Any:
+        await self._ensure_worker()
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[Any] = loop.create_future()
+        await self._queue.put((coro_factory, future))
+        return await future
+
+
+processing_queue = ExcelProcessingQueue()
+
+
+def _build_navigation(
+    sheets: List[Dict[str, Any]], requested_sheet: Optional[str]
+) -> Optional[SheetCursor]:
+    if not sheets:
+        return None
+
+    sheet_names = [sheet["sheet"] for sheet in sheets]
+    current = requested_sheet if requested_sheet in sheet_names else sheet_names[0]
+
+    try:
+        current_index = sheet_names.index(current)
+    except ValueError:  # pragma: no cover - defensive fallback
+        current_index = 0
+        current = sheet_names[0]
+
+    previous_sheet = sheet_names[current_index - 1] if current_index > 0 else None
+    next_sheet = (
+        sheet_names[current_index + 1]
+        if current_index + 1 < len(sheet_names)
+        else None
+    )
+
+    return SheetCursor(
+        current=current,
+        available=sheet_names,
+        previous=previous_sheet,
+        next=next_sheet,
+    )
+
+
 class SheetPreview(BaseModel):
     sheet: str
     columns: List[str]
@@ -95,11 +192,19 @@ class SheetPreview(BaseModel):
     truncated: bool
 
 
+class SheetCursor(BaseModel):
+    current: str
+    available: List[str]
+    previous: Optional[str]
+    next: Optional[str]
+
+
 class PreviewResponse(BaseModel):
     filename: str
     sheets: List[SheetPreview]
     total_sheets: int
     total_rows_estimate: Optional[int]
+    navigation: Optional[SheetCursor]
 
 
 @app.get("/health")
@@ -108,24 +213,46 @@ def healthcheck() -> Dict[str, str]:
 
 
 @app.post("/preview", response_model=PreviewResponse)
-async def preview_excel(file: UploadFile = File(...)) -> PreviewResponse:  # noqa: B008
+async def preview_excel(
+    file: UploadFile = File(...),  # noqa: B008
+    sheet: Optional[str] = Query(
+        None,
+        description=(
+            "Optional sheet name to preview. When omitted, all sheets are parsed and "
+            "returned."
+        ),
+    ),
+) -> PreviewResponse:
     """Parse an uploaded Excel file and return normalized sheet previews."""
 
     file_bytes = await file.read()
-    sheets = _load_excel(file_bytes)
+    sheet_filter = [sheet] if sheet else None
+    sheets: List[Dict[str, Any]] = await processing_queue.enqueue(
+        lambda: _load_excel_async(file_bytes, sheet_names=sheet_filter)
+    )
 
-    total_rows_estimate = sum(sheet["total_rows"] for sheet in sheets)
+    total_rows_estimate = sum(sheet_item["total_rows"] for sheet_item in sheets)
 
     return PreviewResponse(
         filename=file.filename,
-        sheets=[SheetPreview(**sheet) for sheet in sheets],
+        sheets=[SheetPreview(**sheet_item) for sheet_item in sheets],
         total_sheets=len(sheets),
         total_rows_estimate=total_rows_estimate,
+        navigation=_build_navigation(sheets, requested_sheet=sheet),
     )
 
 
 @app.post("/normalize", response_model=Dict[str, Any])
-async def normalize_excel(file: UploadFile = File(...)) -> Dict[str, Any]:  # noqa: B008
+async def normalize_excel(
+    file: UploadFile = File(...),  # noqa: B008
+    sheet: Optional[str] = Query(
+        None,
+        description=(
+            "Optional sheet name to normalize. Defaults to processing every sheet "
+            "in the workbook."
+        ),
+    ),
+) -> Dict[str, Any]:
     """
     Normalize an uploaded Excel file to row-wise JSON for downstream use.
 
@@ -135,7 +262,17 @@ async def normalize_excel(file: UploadFile = File(...)) -> Dict[str, Any]:  # no
     """
 
     file_bytes = await file.read()
-    sheets = _load_excel(file_bytes, sample_rows=10_000, max_rows_per_sheet=10_000)
+    sheet_filter = [sheet] if sheet else None
+    sheets: List[Dict[str, Any]] = await processing_queue.enqueue(
+        lambda: _load_excel_async(
+            file_bytes,
+            sample_rows=10_000,
+            max_rows_per_sheet=10_000,
+            sheet_names=sheet_filter,
+        )
+    )
+
+    navigation = _build_navigation(sheets, requested_sheet=sheet)
 
     normalized = {
         sheet["sheet"]: sheet["preview_rows"] for sheet in sheets
@@ -152,4 +289,5 @@ async def normalize_excel(file: UploadFile = File(...)) -> Dict[str, Any]:  # no
         "filename": file.filename,
         "sheets": normalized,
         "metadata": metadata,
+        "navigation": navigation.dict() if navigation else None,
     }
