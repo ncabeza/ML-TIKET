@@ -25,6 +25,20 @@ With the server running, you can test uploads:
 curl -F "file=@/path/to/any.xlsx" http://localhost:8000/preview
 ```
 
+## Quick preview of the provided sample Excels
+Sample spreadsheets are stored in the repo-level `excels/` directory. You can
+exercise the parsing logic locally without starting the FastAPI server:
+
+```bash
+python apps/python-worker/preview_excels.py
+```
+
+Pass your own file or directory paths to target different inputs:
+
+```bash
+python apps/python-worker/preview_excels.py excels/another-folder /tmp/custom.xlsx
+```
+
 ## Integration notes
 - Keep Excel parsing in this worker; avoid heavy binary handling inside
   serverless functions.
