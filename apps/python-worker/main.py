@@ -23,8 +23,19 @@ app = FastAPI(
 )
 
 
-def _load_excel(file_bytes: bytes, sample_rows: int = 50) -> List[Dict[str, Any]]:
-    """Load the Excel workbook and extract lightweight previews per sheet."""
+def _load_excel(
+    file_bytes: bytes,
+    sample_rows: int = 50,
+    *,
+    max_rows_per_sheet: int = 50_000,
+    chunk_size: int = 2_000,
+) -> List[Dict[str, Any]]:
+    """Load the Excel workbook and extract lightweight previews per sheet.
+
+    The parser keeps memory usage bounded by reading each sheet in chunks and
+    capping the number of scanned rows. A truncated flag indicates when a sheet
+    exceeded the configured ceiling so callers can react accordingly.
+    """
 
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Empty upload received")
@@ -37,14 +48,49 @@ def _load_excel(file_bytes: bytes, sample_rows: int = 50) -> List[Dict[str, Any]
     sheets: List[Dict[str, Any]] = []
 
     for sheet_name in workbook.sheet_names:
-        frame = workbook.parse(sheet_name, nrows=sample_rows, dtype=str).fillna("")
-        preview_rows = frame.to_dict(orient="records")
+        preview_rows: List[Dict[str, Any]] = []
+        total_rows = 0
+        truncated = False
+        columns: List[str] = []
+
+        chunk_iterator = pd.read_excel(
+            workbook,
+            sheet_name=sheet_name,
+            dtype=str,
+            chunksize=chunk_size,
+            engine=workbook.engine,
+        )
+
+        for chunk in chunk_iterator:
+            if not columns:
+                columns = list(chunk.columns)
+
+            filled_chunk = chunk.fillna("")
+            records = filled_chunk.to_dict(orient="records")
+
+            if len(preview_rows) < sample_rows:
+                remaining = sample_rows - len(preview_rows)
+                preview_rows.extend(records[:remaining])
+
+            total_rows += len(records)
+
+            if total_rows >= max_rows_per_sheet:
+                truncated = True
+                total_rows = max_rows_per_sheet
+                break
+
+        if not columns:
+            empty_frame = workbook.parse(sheet_name, nrows=0, dtype=str)
+            columns = list(empty_frame.columns)
+
         sheets.append(
             {
                 "sheet": sheet_name,
-                "columns": list(frame.columns),
-                "sample_row_count": len(frame.index),
+                "columns": columns,
+                "sample_row_count": min(len(preview_rows), sample_rows),
                 "preview_rows": preview_rows,
+                "total_rows": total_rows,
+                "truncated": truncated,
             }
         )
 
@@ -56,6 +102,8 @@ class SheetPreview(BaseModel):
     columns: List[str]
     sample_row_count: int
     preview_rows: List[Dict[str, Any]]
+    total_rows: int
+    truncated: bool
 
 
 class PreviewResponse(BaseModel):
@@ -77,7 +125,7 @@ async def preview_excel(file: UploadFile = File(...)) -> PreviewResponse:  # noq
     file_bytes = await file.read()
     sheets = _load_excel(file_bytes)
 
-    total_rows_estimate = sum(sheet["sample_row_count"] for sheet in sheets)
+    total_rows_estimate = sum(sheet["total_rows"] for sheet in sheets)
 
     return PreviewResponse(
         filename=file.filename,
@@ -98,13 +146,21 @@ async def normalize_excel(file: UploadFile = File(...)) -> Dict[str, Any]:  # no
     """
 
     file_bytes = await file.read()
-    sheets = _load_excel(file_bytes, sample_rows=10_000)
+    sheets = _load_excel(file_bytes, sample_rows=10_000, max_rows_per_sheet=10_000)
 
     normalized = {
         sheet["sheet"]: sheet["preview_rows"] for sheet in sheets
+    }
+    metadata = {
+        sheet["sheet"]: {
+            "total_rows": sheet["total_rows"],
+            "truncated": sheet["truncated"],
+        }
+        for sheet in sheets
     }
 
     return {
         "filename": file.filename,
         "sheets": normalized,
+        "metadata": metadata,
     }
