@@ -163,6 +163,15 @@ export interface TemplateSuggestionResult {
   suggestions: TemplateMatch[];
   proposeNewTemplate: boolean;
   rationale: string;
+  repeatUploadHint?: RepeatUploadHint;
+}
+
+export interface RepeatUploadHint {
+  fingerprint: string;
+  confirmedDateColumns: string[];
+  requiredPrompts: string[];
+  templateExistsOnPlatform: boolean;
+  note: string;
 }
 
 export interface ColumnClassification {

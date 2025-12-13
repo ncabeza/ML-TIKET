@@ -8,6 +8,15 @@ import {
 import { inferFieldType } from "./nn";
 import { buildDirectoryMatches } from "./technicians";
 
+const KNOWN_FINGERPRINTS: Array<{ fingerprintPrefix: string; template_id: string; template_version_id: string }>
+  = [
+    {
+      fingerprintPrefix: "anchor-hash::formula-fp",
+      template_id: "template-historic",
+      template_version_id: "v1",
+    },
+  ];
+
 // Vector DB use is restricted to similarity only; persistence stays in MongoDB.
 export async function matchTemplates(
   artifact: ImportArtifact,
@@ -26,6 +35,21 @@ export async function matchTemplates(
     { template_id: "template-adhoc", template_version_id: "v2", score: 0.57 },
   ];
 
+  const fingerprintPieces = [
+    artifact.compressed_representation?.anchorHash ?? "unknown-anchor",
+    artifact.compressed_representation?.formulaFingerprint ?? "unknown-formula",
+    ...artifact.detected_tables.map((table) =>
+      table.columns
+        .map((col) => col.name.toLowerCase())
+        .sort()
+        .join("|")
+    ),
+  ];
+  const fingerprint = fingerprintPieces.join("::");
+  const matchedFingerprint = KNOWN_FINGERPRINTS.find(({ fingerprintPrefix }) =>
+    fingerprint.startsWith(fingerprintPrefix)
+  );
+
   const adjustedScores = baseScores.map((candidate) => {
     const bonus = strongSchemaSignal ? 0.06 : 0;
     const penalty = avgConfidence < 0.45 ? 0.08 : 0;
@@ -41,6 +65,24 @@ export async function matchTemplates(
   const strongMatch = sorted.find((t) => t.score >= 0.85);
   const proposeNewTemplate = !strongMatch && sorted.every((t) => t.score < 0.7);
 
+  const dateColumns = classifications.filter((c) => c.type === "date").map((c) => c.column);
+  const repeatUploadHint = matchedFingerprint
+    ? {
+        fingerprint,
+        confirmedDateColumns: dateColumns,
+        requiredPrompts: ["cliente", "proyecto"],
+        templateExistsOnPlatform: sorted.some(
+          (t) =>
+            t.template_id === matchedFingerprint.template_id &&
+            t.template_version_id === matchedFingerprint.template_version_id
+        ),
+        note:
+          dateColumns.length > 0
+            ? "Fingerprint repetido detectado; solo solicita confirmación de las fechas presentes y valida cliente/proyecto."
+            : "Fingerprint repetido detectado; confirma cliente/proyecto y valida la plantilla asociada en plataforma.",
+      }
+    : undefined;
+
   return {
     strongMatch,
     suggestions: sorted,
@@ -48,6 +90,7 @@ export async function matchTemplates(
     rationale: strongMatch
       ? "Schema coverage and neural scores exceed the safety bar; request explicit confirmation."
       : "No template cleared the 0.7 similarity bar after neural adjustment; suggest drafting a new template with human review.",
+    repeatUploadHint,
   };
 }
 
