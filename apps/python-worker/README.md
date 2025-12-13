@@ -8,9 +8,14 @@ any `.xlsx` upload.
 ## Endpoints
 - `GET /health`: simple availability check.
 - `POST /preview`: accepts `multipart/form-data` with `file` (Excel) and
-  returns sheet metadata plus up to 50 sample rows per sheet.
+  returns sheet metadata plus up to 50 sample rows per sheet. You can filter
+  to a single sheet by providing a `sheet` query string parameter and the
+  response includes navigation hints (`previous`/`next`) to move across the
+  workbook.
 - `POST /normalize`: same upload contract, but returns the whole sheet as
   JSON (string values) up to 10,000 rows per sheet for downstream inserts.
+  The optional `sheet` query parameter also works here to limit processing to
+  a single worksheet.
 
 ## Local development
 ```bash
