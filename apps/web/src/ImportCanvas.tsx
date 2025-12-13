@@ -51,6 +51,8 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({ preview }) => {
           <pre>{JSON.stringify(preview.classifications, null, 2)}</pre>
           <h4>Perfil de faltantes</h4>
           <pre>{JSON.stringify(preview.missingness, null, 2)}</pre>
+          <h4>Asignación de técnicos por documento</h4>
+          <pre>{JSON.stringify(preview.technicianAssignment, null, 2)}</pre>
         </section>
       )}
     </div>

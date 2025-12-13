@@ -39,6 +39,7 @@ export interface MLInsights {
   }>;
   inferred_field_types?: Record<string, { type: FieldType; confidence: number }>;
   missingness_profile?: MissingnessProfile;
+  technician_assignment?: TechnicianAssignmentInsight;
 }
 
 export type FieldType =
@@ -55,6 +56,21 @@ export interface MissingnessProfile {
   confidence: number;
   imputation_permitted: boolean;
   blockers?: string[];
+}
+
+export interface TechnicianAssignmentMatch {
+  document: string;
+  technician_id?: string;
+  technician_name?: string;
+  confidence: number;
+  rationale: string;
+}
+
+export interface TechnicianAssignmentInsight {
+  identityField?: string;
+  matches: TechnicianAssignmentMatch[];
+  policy: "AUTO_ASSIGN" | "REVIEW";
+  notes: string[];
 }
 
 export interface JobStats {
@@ -154,5 +170,6 @@ export interface PreviewPayload {
   classifications: ColumnClassification[];
   templateSuggestion: TemplateSuggestionResult;
   missingness: MissingnessDetectionResult;
+  technicianAssignment: TechnicianAssignmentInsight;
 }
 

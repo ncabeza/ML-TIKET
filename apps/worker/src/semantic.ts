@@ -2,9 +2,11 @@ import {
   ColumnClassification,
   ImportArtifact,
   MissingnessDetectionResult,
+  TechnicianAssignmentInsight,
   TemplateSuggestionResult,
 } from "@shared/types";
 import { inferFieldType } from "./nn";
+import { buildDirectoryMatches } from "./technicians";
 
 // Vector DB use is restricted to similarity only; persistence stays in MongoDB.
 export async function matchTemplates(
@@ -83,6 +85,64 @@ export async function detectMissingness(artifact: ImportArtifact): Promise<Missi
     notes: [
       "Signal now leverages structural density to avoid over-confident interpolation.",
       "Use downstream validation to override only after explicit operator approval.",
+    ],
+  };
+}
+
+const IDENTITY_KEYWORDS = [
+  "rut",
+  "dni",
+  "documento",
+  "identidad",
+  "cedula",
+  "cédula",
+  "tecnico",
+  "técnico",
+  "technician",
+];
+
+function findIdentityColumn(artifact: ImportArtifact) {
+  return artifact.detected_tables
+    .flatMap((table) => table.columns)
+    .find((column) => {
+      const normalized = column.name.toLowerCase();
+      return IDENTITY_KEYWORDS.some((keyword) => normalized.includes(keyword));
+    });
+}
+
+export function recommendTechnicianAssignments(
+  artifact: ImportArtifact,
+  classifications: ColumnClassification[]
+): TechnicianAssignmentInsight {
+  const identityColumn = findIdentityColumn(artifact);
+  const identityField = identityColumn?.name;
+
+  if (!identityField) {
+    return {
+      identityField: undefined,
+      matches: [],
+      policy: "REVIEW",
+      notes: [
+        "No se detectó una columna de RUT/DNI; las asignaciones deberán revisarse manualmente en la fase de validación.",
+        "Si el Excel incluye un identificador de técnico, use nombres como 'RUT Técnico' o 'DNI' para activar el auto-mapeo.",
+      ],
+    };
+  }
+
+  const matches = buildDirectoryMatches(identityField);
+  const hasIdentitySignal = classifications.some((c) =>
+    c.column.toLowerCase() === identityField.toLowerCase()
+  );
+
+  return {
+    identityField,
+    matches,
+    policy: "AUTO_ASSIGN",
+    notes: [
+      hasIdentitySignal
+        ? "El modelo detectó un campo de identidad y propondrá la asignación automática al técnico coincidente."
+        : "Se detectó una columna de identidad; se recomienda confirmar el mapeo antes de ejecutar la importación.",
+      "Las coincidencias se basan en el documento de identidad; cualquier dígito faltante o formato distinto requerirá revisión manual.",
     ],
   };
 }

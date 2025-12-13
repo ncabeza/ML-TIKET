@@ -4,12 +4,13 @@ import {
   ImportJob,
   MissingnessDetectionResult,
   PreviewPayload,
+  TechnicianAssignmentInsight,
   TemplateSuggestionResult,
 } from "@shared/types";
 import crypto from "crypto";
 import { attachArtifact, storeErrorFile, storeInsights, updateJobStatus } from "../../api/src/persistence";
 import { parseExcelNative, buildStructuralTree, compressStructure } from "./structure";
-import { classifyColumns, detectMissingness, matchTemplates } from "./semantic";
+import { classifyColumns, detectMissingness, matchTemplates, recommendTechnicianAssignments } from "./semantic";
 import { validateHardRules, createTicketsInBatches } from "./tickets";
 
 export function buildPreviewPipeline() {
@@ -33,6 +34,10 @@ export function buildPreviewPipeline() {
     const classifications: ColumnClassification[] = await classifyColumns(artifact);
     const missingness: MissingnessDetectionResult = await detectMissingness(artifact);
     const templateSuggestion: TemplateSuggestionResult = await matchTemplates(artifact, classifications);
+    const technicianAssignment: TechnicianAssignmentInsight = recommendTechnicianAssignments(
+      artifact,
+      classifications
+    );
 
     await storeInsights(job._id, {
       structure_confidence: tree.confidence,
@@ -41,6 +46,7 @@ export function buildPreviewPipeline() {
         classifications.map((c) => [c.column, { type: c.type, confidence: c.confidence }])
       ),
       missingness_profile: missingness.profile,
+      technician_assignment: technicianAssignment,
     });
 
     return {
@@ -49,6 +55,7 @@ export function buildPreviewPipeline() {
       classifications,
       templateSuggestion,
       missingness,
+      technicianAssignment,
     };
   };
 }
@@ -62,7 +69,9 @@ export function buildRunPipeline() {
 
     const validation = await validateHardRules(job);
     if (!validation.ok) {
-      await storeErrorFile(job._id, validation.errorFileKey);
+      if (validation.errorFileKey) {
+        await storeErrorFile(job._id, validation.errorFileKey);
+      }
       await updateJobStatus(job._id, "FAILED");
       return validation;
     }
