@@ -123,6 +123,10 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
   const [isLoading, setIsLoading] = React.useState(false);
   const [selectedMode, setSelectedMode] = React.useState<ImportMode | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [previewHealth, setPreviewHealth] = React.useState<{
+    isValid: boolean;
+    message: string | null;
+  }>({ isValid: true, message: null });
   const [columnMapping, setColumnMapping] = React.useState<Record<string, string | null>>({});
   const [fieldTypeMapping, setFieldTypeMapping] = React.useState<Record<string, FieldType | "">>(
     {},
@@ -140,6 +144,56 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
 
   const requiredFields = React.useMemo(() => REQUIRED_FIELDS, []);
 
+  React.useEffect(() => {
+    if (!preview) {
+      setPreviewHealth({ isValid: true, message: null });
+      return;
+    }
+
+    try {
+      if (!Array.isArray(preview.artifact?.detected_tables)) {
+        throw new Error("La respuesta no incluye tablas detectadas válidas.");
+      }
+
+      preview.artifact.detected_tables.forEach((table, index) => {
+        if (!Array.isArray(table.columns)) {
+          throw new Error(
+            `La tabla en la posición ${index} no contiene columnas reconocibles.`,
+          );
+        }
+
+        table.columns.forEach((column, columnIndex) => {
+          if (typeof column?.name !== "string" || column.name.trim() === "") {
+            throw new Error(
+              `La columna ${columnIndex + 1} de la tabla ${index + 1} no tiene nombre válido.`,
+            );
+          }
+        });
+      });
+
+      setPreviewHealth({ isValid: true, message: null });
+    } catch (validationError) {
+      setPreviewHealth({
+        isValid: false,
+        message:
+          validationError instanceof Error
+            ? validationError.message
+            : "No se pudo validar la estructura del preview.",
+      });
+    }
+  }, [preview]);
+
+  React.useEffect(() => {
+    if (previewHealth.message) {
+      setError(previewHealth.message);
+      return;
+    }
+
+    if (previewHealth.isValid) {
+      setError(null);
+    }
+  }, [previewHealth.message, previewHealth.isValid]);
+
   const fieldKeywords = React.useMemo(() => {
     const keywords: Record<string, string[]> = {};
     requiredFields.forEach((field) => {
@@ -151,12 +205,12 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
   }, [requiredFields]);
 
   const availableColumns = React.useMemo(() => {
-    if (!preview) return [] as string[];
+    if (!preview || !previewHealth.isValid) return [] as string[];
     const detected = preview.artifact.detected_tables.flatMap((table) =>
       table.columns.map((col) => col.name),
     );
     return Array.from(new Set(detected));
-  }, [preview]);
+  }, [preview, previewHealth.isValid]);
 
   const normalizedColumns = React.useMemo(
     () => availableColumns.map((col) => ({ original: col, normalized: normalizeText(col) })),
@@ -188,13 +242,13 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
   ];
 
   React.useEffect(() => {
-    if (preview && (step === "upload" || step === "mode")) {
+    if (preview && previewHealth.isValid && (step === "upload" || step === "mode")) {
       setStep("structure");
     }
-  }, [preview, step]);
+  }, [preview, previewHealth.isValid, step]);
 
   React.useEffect(() => {
-    if (!preview) return;
+    if (!preview || !previewHealth.isValid) return;
 
     setColumnMapping((current) => {
       let changed = false;
@@ -214,7 +268,7 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
 
       return changed ? next : current;
     });
-  }, [columnGuesses, preview, requiredFields]);
+  }, [columnGuesses, preview, previewHealth.isValid, requiredFields]);
 
   const classificationTypeByColumn = React.useMemo(() => {
     const map = new Map<string, FieldType>();
@@ -229,7 +283,7 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
   }, [preview]);
 
   React.useEffect(() => {
-    if (!preview) return;
+    if (!preview || !previewHealth.isValid) return;
 
     setFieldTypeMapping((current) => {
       let changed = false;
@@ -249,7 +303,7 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
 
       return changed ? next : current;
     });
-  }, [classificationTypeByColumn, columnMapping, preview, requiredFields]);
+  }, [classificationTypeByColumn, columnMapping, preview, previewHealth.isValid, requiredFields]);
 
   const handleUpload: React.ChangeEventHandler<HTMLInputElement> = async (
     event,
@@ -270,12 +324,26 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
   };
 
   const handleSelectMode = (mode: ImportMode) => {
+    if (!previewHealth.isValid) {
+      setError(
+        previewHealth.message ?? "No se puede seleccionar modo hasta validar el archivo.",
+      );
+      return;
+    }
+
     setSelectedMode(mode);
     onSelectMode(mode);
     setStep("structure");
   };
 
   const handleConfirmTemplate = async () => {
+    if (!previewHealth.isValid) {
+      setError(
+        previewHealth.message ?? "Falta validar la información del preview antes de continuar.",
+      );
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
@@ -293,6 +361,13 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
   };
 
   const handleRun = async () => {
+    if (!previewHealth.isValid) {
+      setError(
+        previewHealth.message ?? "No se puede ejecutar sin validar la información recibida.",
+      );
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
