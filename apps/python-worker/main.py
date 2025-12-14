@@ -13,6 +13,8 @@ import pandas as pd
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
+from ml_pipeline import build_ml_preview
+
 app = FastAPI(
     title="ML-TIKET Python Worker",
     description=(
@@ -100,6 +102,52 @@ def _load_excel(
         )
 
     return sheets
+
+
+def _load_sheet_frames(
+    file_bytes: bytes,
+    *,
+    max_rows_per_sheet: int = 5_000,
+    sheet_names: Optional[List[str]] = None,
+) -> Dict[str, pd.DataFrame]:
+    """Load worksheets into pandas DataFrames for ML processing."""
+
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Empty upload received")
+
+    try:
+        workbook = pd.ExcelFile(BytesIO(file_bytes))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid Excel file: {exc}") from exc
+
+    if sheet_names:
+        requested: Set[str] = set(sheet_names)
+        available: Set[str] = set(workbook.sheet_names)
+        missing = requested - available
+        if missing:
+            missing_list = ", ".join(sorted(missing))
+            raise HTTPException(
+                status_code=404,
+                detail=f"Sheet(s) not found: {missing_list}",
+            )
+
+    frames: Dict[str, pd.DataFrame] = {}
+    for sheet_name in workbook.sheet_names:
+        if sheet_names and sheet_name not in sheet_names:
+            continue
+        frame = pd.read_excel(
+            workbook,
+            sheet_name=sheet_name,
+            dtype=str,
+            nrows=max_rows_per_sheet,
+            engine=workbook.engine,
+        )
+        frames[sheet_name] = frame
+
+    if not frames:
+        raise HTTPException(status_code=404, detail="No sheets found in workbook")
+
+    return frames
 
 
 async def _load_excel_async(
@@ -219,6 +267,27 @@ class PreviewResponse(BaseModel):
     navigation: Optional[SheetCursor]
 
 
+class OutlierSummary(BaseModel):
+    column: str
+    lower_cap: float
+    upper_cap: float
+    capped_values: int
+
+
+class SheetMLPreview(BaseModel):
+    sheet: str
+    missingness: Dict[str, float]
+    outliers: List[OutlierSummary]
+    feature_names: List[str]
+    feature_preview: List[List[float]]
+    pipeline_steps: List[str]
+
+
+class MLPipelineResponse(BaseModel):
+    filename: str
+    sheets: List[SheetMLPreview]
+
+
 @app.get("/health")
 def healthcheck() -> Dict[str, str]:
     return {"status": "ok"}
@@ -303,3 +372,56 @@ async def normalize_excel(
         "metadata": metadata,
         "navigation": navigation.dict() if navigation else None,
     }
+
+
+@app.post("/ml/pipeline", response_model=MLPipelineResponse)
+async def ml_pipeline_preview(
+    file: UploadFile = File(...),  # noqa: B008
+    sheet: Optional[str] = Query(
+        None,
+        description=(
+            "Optional sheet name to process. When omitted, all sheets are parsed and "
+            "evaluated for ML readiness."
+        ),
+    ),
+    sample_rows: int = Query(
+        2_000,
+        ge=50,
+        le=10_000,
+        description=(
+            "Cap on rows loaded per sheet to keep ML profiling responsive. "
+            "Defaults to 2,000 rows."
+        ),
+    ),
+) -> MLPipelineResponse:
+    """Return ML-friendly profiling for uploaded Excel sheets."""
+
+    file_bytes = await file.read()
+    sheet_filter = [sheet] if sheet else None
+    frames = _load_sheet_frames(
+        file_bytes, max_rows_per_sheet=sample_rows, sheet_names=sheet_filter
+    )
+
+    summaries: List[SheetMLPreview] = []
+    for sheet_name, frame in frames.items():
+        ml_preview = build_ml_preview(frame)
+        summaries.append(
+            SheetMLPreview(
+                sheet=sheet_name,
+                missingness=ml_preview.missingness,
+                outliers=[
+                    OutlierSummary(
+                        column=col,
+                        lower_cap=summary["lower"],
+                        upper_cap=summary["upper"],
+                        capped_values=summary["capped"],
+                    )
+                    for col, summary in ml_preview.outliers.items()
+                ],
+                feature_names=ml_preview.feature_names,
+                feature_preview=ml_preview.feature_preview,
+                pipeline_steps=ml_preview.pipeline_steps,
+            )
+        )
+
+    return MLPipelineResponse(filename=file.filename, sheets=summaries)
