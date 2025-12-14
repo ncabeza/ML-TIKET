@@ -9,34 +9,74 @@ type RequiredField = {
   synonyms?: string[];
 };
 
+const normalizeText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .trim();
+
 const REQUIRED_FIELDS: RequiredField[] = [
   {
     id: "cliente",
     label: "Cliente",
     required: true,
     hint: "Campo primario para validar el proyecto.",
-    synonyms: ["client", "razon social"],
+    synonyms: [
+      "client",
+      "cliente final",
+      "razon social",
+      "empresa",
+      "compania",
+      "customer",
+      "account",
+    ],
   },
   {
     id: "direccion",
     label: "Dirección",
     required: true,
     hint: "Necesario para asociar el ticket a la ubicación correcta.",
-    synonyms: ["address", "ubicacion"],
+    synonyms: [
+      "address",
+      "ubicacion",
+      "ubicación",
+      "domicilio",
+      "calle",
+      "dir",
+      "localidad",
+      "direccion cliente",
+    ],
   },
   {
     id: "fecha_visita",
     label: "Fecha de visita",
     required: true,
     hint: "Formato ISO recomendado (AAAA-MM-DD).",
-    synonyms: ["fecha", "visit date"],
+    synonyms: [
+      "fecha",
+      "visit date",
+      "fecha programada",
+      "fecha agendada",
+      "programacion",
+      "fecha cita",
+      "schedule date",
+    ],
   },
   {
     id: "tecnico",
     label: "Técnico asignado",
     required: false,
     hint: "Ayuda a auto-asignar el ticket si hay coincidencia.",
-    synonyms: ["tecnico", "technician"],
+    synonyms: [
+      "tecnico",
+      "technician",
+      "ingeniero",
+      "responsable",
+      "operario",
+      "asignado",
+    ],
   },
 ];
 
@@ -100,6 +140,16 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
 
   const requiredFields = React.useMemo(() => REQUIRED_FIELDS, []);
 
+  const fieldKeywords = React.useMemo(() => {
+    const keywords: Record<string, string[]> = {};
+    requiredFields.forEach((field) => {
+      keywords[field.id] = [field.label, ...(field.synonyms ?? [])].map(
+        normalizeText,
+      );
+    });
+    return keywords;
+  }, [requiredFields]);
+
   const availableColumns = React.useMemo(() => {
     if (!preview) return [] as string[];
     const detected = preview.artifact.detected_tables.flatMap((table) =>
@@ -107,6 +157,11 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
     );
     return Array.from(new Set(detected));
   }, [preview]);
+
+  const normalizedColumns = React.useMemo(
+    () => availableColumns.map((col) => ({ original: col, normalized: normalizeText(col) })),
+    [availableColumns],
+  );
 
   const orderedSteps: Step[] = [
     "upload",
@@ -132,19 +187,15 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
 
       requiredFields.forEach((field) => {
         if (next[field.id]) return;
-        const guess = availableColumns.find((col) => {
-          const normalized = col.toLowerCase();
-          return (
-            normalized.includes(field.label.toLowerCase()) ||
-            field.synonyms?.some((syn) => normalized.includes(syn.toLowerCase()))
-          );
-        });
-        next[field.id] = guess ?? null;
+        const guess = normalizedColumns.find(({ normalized }) =>
+          fieldKeywords[field.id].some((keyword) => normalized.includes(keyword)),
+        );
+        next[field.id] = guess?.original ?? null;
       });
 
       return next;
     });
-  }, [availableColumns, preview, requiredFields]);
+  }, [fieldKeywords, normalizedColumns, preview, requiredFields]);
 
   React.useEffect(() => {
     if (!preview) return;
