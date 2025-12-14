@@ -50,22 +50,38 @@ export async function matchTemplates(
     fingerprint.startsWith(fingerprintPrefix)
   );
 
-  const adjustedScores = baseScores.map((candidate) => {
-    const bonus = strongSchemaSignal ? 0.06 : 0;
-    const penalty = avgConfidence < 0.45 ? 0.08 : 0;
-    const columnDiversity = new Set(classifications.map((c) => c.type)).size;
-    const diversityBoost = columnDiversity >= 4 ? 0.03 : 0;
-    return {
-      ...candidate,
-      score: Number(Math.min(0.99, candidate.score + bonus + diversityBoost - penalty).toFixed(3)),
-    };
-  });
+  const adjustedScores = baseScores
+    .map((candidate) => {
+      const bonus = strongSchemaSignal ? 0.06 : 0;
+      const penalty = avgConfidence < 0.45 ? 0.08 : 0;
+      const columnDiversity = new Set(classifications.map((c) => c.type)).size;
+      const diversityBoost = columnDiversity >= 4 ? 0.03 : 0;
+      const fingerprintBoost =
+        matchedFingerprint &&
+        candidate.template_id === matchedFingerprint.template_id &&
+        candidate.template_version_id === matchedFingerprint.template_version_id
+          ? 0.12
+          : 0;
 
-  const sorted = adjustedScores.sort((a, b) => b.score - a.score);
-  const strongMatch = sorted.find((t) => t.score >= 0.85);
-  const proposeNewTemplate = !strongMatch && sorted.every((t) => t.score < 0.7);
+      const boostedScore = Math.min(
+        0.99,
+        candidate.score + bonus + diversityBoost + fingerprintBoost - penalty
+      );
 
-  const topCandidate = strongMatch ?? sorted[0];
+      return {
+        ...candidate,
+        score: Number(boostedScore.toFixed(3)),
+        fingerprintHit: fingerprintBoost > 0,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const strongMatch =
+    adjustedScores.find((candidate) => candidate.fingerprintHit) ??
+    adjustedScores.find((t) => t.score >= 0.85);
+  const proposeNewTemplate = !strongMatch && adjustedScores.every((t) => t.score < 0.7);
+
+  const topCandidate = strongMatch ?? adjustedScores[0];
   const friendlyScore = topCandidate ? Math.round(topCandidate.score * 100) : undefined;
   const technicianSummary = topCandidate
     ? `Detectamos que el Excel se parece a la plantilla ${topCandidate.template_id} (v${topCandidate.template_version_id}) con una coincidencia aproximada del ${friendlyScore}%. Te dejamos el mapeo sugerido para que sólo ajustes lo necesario y confirmes antes de crear tickets.`
@@ -77,7 +93,7 @@ export async function matchTemplates(
         fingerprint,
         confirmedDateColumns: dateColumns,
         requiredPrompts: ["cliente", "proyecto"],
-        templateExistsOnPlatform: sorted.some(
+        templateExistsOnPlatform: adjustedScores.some(
           (t) =>
             t.template_id === matchedFingerprint.template_id &&
             t.template_version_id === matchedFingerprint.template_version_id
@@ -109,10 +125,12 @@ export async function matchTemplates(
 
   return {
     strongMatch,
-    suggestions: sorted,
+    suggestions: adjustedScores,
     proposeNewTemplate,
     rationale: strongMatch
-      ? "Schema coverage and neural scores exceed the safety bar; request explicit confirmation."
+      ? matchedFingerprint
+        ? "Fingerprint y estructura coinciden con una plantilla conocida; prioriza la reutilización con confirmación explícita."
+        : "Schema coverage and neural scores exceed the safety bar; request explicit confirmation."
       : "No template cleared the 0.7 similarity bar after neural adjustment; suggest drafting a new template with human review.",
     repeatUploadHint,
     technicianSummary,
@@ -136,24 +154,52 @@ export async function classifyColumns(artifact: ImportArtifact): Promise<ColumnC
 
 export async function detectMissingness(artifact: ImportArtifact): Promise<MissingnessDetectionResult> {
   const tableCount = artifact.detected_tables.length;
-  const denseFormats = artifact.format_groups.length > 4;
-  const missingnessSignal = tableCount > 1 && denseFormats ? "MAR" : "MNAR";
-  const confidence = missingnessSignal === "MAR" ? 0.68 : 0.52;
+  const columnCount = artifact.detected_tables.reduce(
+    (sum, table) => sum + table.columns.length,
+    0
+  );
+  const anchorCount = artifact.anchors.length;
+  const formatGroups = artifact.format_groups.length;
+  const formulaSignals = artifact.formula_index.length;
 
-  const blockers = missingnessSignal === "MNAR"
-    ? ["Sparse structure increases MNAR risk", "Manual review required for imputation"]
-    : ["Validate key business columns before imputation"];
+  const structuralDensity =
+    (tableCount > 1 ? 0.2 : 0.12) +
+    Math.min(anchorCount, 3) * 0.08 +
+    Math.min(formatGroups, 5) * 0.05 +
+    (formulaSignals > 0 ? 0.08 : 0);
+  const volumeBoost = columnCount >= 8 ? 0.2 : columnCount >= 4 ? 0.1 : 0.04;
+  const confidence = Number(
+    Math.min(0.95, Math.max(0.35, structuralDensity + volumeBoost)).toFixed(2)
+  );
+
+  const sparseLayout = columnCount < 3 || tableCount === 0;
+  const missingnessSignal = confidence < 0.5 || sparseLayout ? "MNAR" : confidence > 0.72 ? "MAR" : "MCAR";
+  const imputationPermitted = missingnessSignal !== "MNAR" && confidence >= 0.58;
+
+  const blockers: string[] = [];
+  if (missingnessSignal === "MNAR") {
+    blockers.push("Estructura insuficiente o tablas vacías detectadas; requiere revisión manual.");
+  }
+  if (!imputationPermitted) {
+    blockers.push("La confianza del perfil no alcanza el umbral seguro para imputación automática.");
+  }
+  if (anchorCount === 0) {
+    blockers.push("No se encontraron encabezados ancla para validar columnas obligatorias.");
+  }
+  if (formatGroups <= 1) {
+    blockers.push("Pocas señales de formato; no se pueden distinguir secciones críticas.");
+  }
 
   return {
     profile: {
       signal: missingnessSignal,
       confidence,
-      imputation_permitted: missingnessSignal === "MAR" && confidence > 0.6,
+      imputation_permitted: imputationPermitted,
       blockers,
     },
     notes: [
-      "Signal now leverages structural density to avoid over-confident interpolation.",
-      "Use downstream validation to override only after explicit operator approval.",
+      "El perfil considera densidad estructural (anclas, fórmulas, formatos) para evitar imputaciones optimistas.",
+      "Solo habilita imputación cuando la señal es consistente y supera el umbral de confianza acordado con QA.",
     ],
   };
 }
