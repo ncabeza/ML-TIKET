@@ -11,6 +11,32 @@ Esta guía explica cómo levantar cada pieza del proyecto, validar el código lo
 - Python 3.10+ para el worker de Excel.
 - `make` no es necesario; todo se ejecuta con npm o comandos directos.
 
+### Checklist paso a paso (Debian/Ubuntu)
+1. Instala dependencias base:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y python3.10 python3.10-venv python3-pip
+   curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+   sudo apt-get install -y nodejs
+   ```
+2. Descarga paquetes del monorepo y valida tipos:
+   ```bash
+   npm install
+   npm run typecheck
+   ```
+3. Prepara el entorno virtual para el worker de Python y levanta FastAPI:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r apps/python-worker/requirements.txt
+   uvicorn apps.python-worker.main:app --reload
+   ```
+4. Prueba el endpoint `/preview` con un Excel incluido en `excels/` y verifica que devuelve JSON estructurado:
+   ```bash
+   curl -F "file=@excels/NOMINAS CIBERNOS - The Tiket.xlsx" http://localhost:8000/preview
+   ```
+5. (Opcional) Ejecuta `python apps/python-worker/preview_excels.py` para recorrer varios Excels sin necesidad del servidor.
+
 ## Instalación base (Node/TypeScript)
 1. Instala dependencias de la raíz (incluye workspaces):
    ```bash
