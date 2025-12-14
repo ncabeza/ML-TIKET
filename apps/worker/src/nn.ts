@@ -183,8 +183,10 @@ export function scoreFieldTypes(columnName: string): Array<{ type: FieldType; sc
   );
   const logits = matVecMul(NETWORK.W2, hidden).map((v, idx) => v + NETWORK.b2[idx]);
   const probs = softmax(logits);
+  const total = probs.reduce((sum, value) => sum + value, 0);
+  const normalized = total === 0 ? probs : probs.map((value) => value / total);
 
-  return probs.map((p, idx) => ({ type: FIELD_MAP[idx], score: Number(p.toFixed(3)) }));
+  return normalized.map((p, idx) => ({ type: FIELD_MAP[idx], score: Number(p.toPrecision(6)) }));
 }
 
 export function inferFieldType(columnName: string): { type: FieldType; confidence: number; evidence: string[] } {
