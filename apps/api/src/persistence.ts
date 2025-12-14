@@ -2,6 +2,10 @@ import crypto from "crypto";
 import { ImportJob, TemplateSuggestionResult } from "@shared/types";
 import { getImportJobsCollection } from "./db";
 
+export function resetJobs() {
+  inMemoryJobs = {};
+}
+
 export async function persistJob(
   partial: Pick<ImportJob, "project_id" | "created_by" | "mode" | "upload">
 ): Promise<ImportJob> {
