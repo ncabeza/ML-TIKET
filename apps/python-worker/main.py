@@ -6,7 +6,7 @@ other services can call during the preview/run phases of the import
 pipeline.
 """
 from io import BytesIO
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 import asyncio
 import pandas as pd
@@ -48,6 +48,17 @@ def _load_excel(
 
     sheets: List[Dict[str, Any]] = []
 
+    if sheet_names:
+        requested: Set[str] = set(sheet_names)
+        available: Set[str] = set(workbook.sheet_names)
+        missing = requested - available
+        if missing:
+            missing_list = ", ".join(sorted(missing))
+            raise HTTPException(
+                status_code=404,
+                detail=f"Sheet(s) not found: {missing_list}",
+            )
+
     for sheet_name in workbook.sheet_names:
         if sheet_names and sheet_name not in sheet_names:
             continue
@@ -63,8 +74,9 @@ def _load_excel(
         columns: List[str] = list(frame.columns)
         filled = frame.fillna("")
         records = filled.to_dict(orient="records")
+        full_row_count = len(records)
 
-        if len(records) > max_rows_per_sheet:
+        if full_row_count > max_rows_per_sheet:
             truncated = True
             records = records[:max_rows_per_sheet]
 
@@ -74,7 +86,7 @@ def _load_excel(
 
         preview_rows = records[:sample_rows]
         sample_row_count = len(preview_rows)
-        total_rows = len(records)
+        total_rows = full_row_count
 
         sheets.append(
             {
