@@ -1,13 +1,28 @@
-import { ImportJob, PreviewPayload } from "@shared/types";
-import { buildPreviewPipeline, buildRunPipeline } from "../../worker/src/pipeline";
+import { ImportJob } from "@shared/types";
+import { attachArtifact, storeInsights } from "./persistence";
+import { requestNormalize, requestPreview } from "./pythonWorkerClient";
 
-// These functions mimic durable queueing to a worker process.
-export async function queuePreviewJob(job: ImportJob): Promise<PreviewPayload> {
-  const pipeline = buildPreviewPipeline();
-  return pipeline(job);
+export async function queuePreviewJob(job: ImportJob) {
+  const result = await requestPreview(job);
+
+  if (result.structural_artifact_id) {
+    await attachArtifact(job._id, result.structural_artifact_id);
+  }
+
+  if (result.ml_insights) {
+    await storeInsights(job._id, result.ml_insights);
+  }
+
+  return { job, ...result };
 }
 
-export async function queueRunJob(job: ImportJob) {
-  const pipeline = buildRunPipeline();
-  return pipeline(job);
+export async function queueRunJob(job: ImportJob, sheet?: string) {
+  const result = await requestNormalize(job, sheet);
+
+  await storeInsights(job._id, {
+    normalized_preview: result.sheets,
+    normalization_metadata: result.metadata,
+  });
+
+  return result;
 }

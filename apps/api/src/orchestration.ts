@@ -1,9 +1,9 @@
-import { JobDiagnostics, PreviewPayload, ImportJob, TemplateSuggestionResult } from "@shared/types";
+import { JobDiagnostics, ImportJob, TemplateSuggestionResult } from "@shared/types";
 import { queuePreviewJob, queueRunJob } from "./queues";
 import { updateJobStatus, updateJobTemplateResolution } from "./persistence";
 import { analyzePotentialIssues } from "../../worker/src/diagnostics";
 
-export async function orchestratePreview(job: ImportJob): Promise<PreviewPayload> {
+export async function orchestratePreview(job: ImportJob) {
   // Kick work to a dedicated worker to avoid Vercel timeouts.
   const previewResult = await queuePreviewJob(job);
   await updateJobStatus(job._id, "PREVIEW_READY");
