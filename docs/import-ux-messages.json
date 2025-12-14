@@ -1,0 +1,154 @@
+{
+  "ux_messages": {
+    "1_upload_errors": {
+      "invalid_extension": {
+        "title": "Formato de archivo no admitido",
+        "body": "El archivo no parece ser un Excel (.xlsx) válido para importar.",
+        "help_text": "Guarda tu archivo en formato Excel (.xlsx) y vuelve a subirlo. Otros formatos no se procesan."
+      },
+      "file_corrupted": {
+        "title": "No pudimos leer el archivo",
+        "body": "El Excel está dañado o incompleto, por lo que no pudimos abrirlo.",
+        "help_text": "Ábrelo en tu ordenador, guarda una copia nueva y vuelve a intentar la importación."
+      },
+      "file_too_large": {
+        "title": "El archivo supera el tamaño permitido",
+        "body": "Este archivo es más grande de lo que podemos procesar en una sola carga.",
+        "help_text": "Elimina hojas o filas vacías, o divide el contenido en dos archivos más pequeños y vuelve a subirlos."
+      },
+      "file_empty": {
+        "title": "El archivo está vacío",
+        "body": "No encontramos datos en la hoja seleccionada del Excel.",
+        "help_text": "Confirma que cargaste la pestaña correcta o agrega datos antes de volver a importar."
+      }
+    },
+    "2_parsing_structure_errors": {
+      "unrecognizable_structure": {
+        "title": "No pudimos reconocer la tabla",
+        "body": "La estructura del Excel no se pudo identificar automáticamente.",
+        "help_text": "Asegúrate de que la primera fila tenga encabezados claros y que la tabla no tenga espacios en blanco irregulares."
+      },
+      "inconsistent_headers": {
+        "title": "Encabezados faltantes o duplicados",
+        "body": "Detectamos columnas sin título o con el mismo nombre repetido.",
+        "help_text": "Revisa la fila de encabezados y asigna un nombre único a cada columna antes de continuar."
+      },
+      "merged_cells_warning": {
+        "title": "Atención: hay celdas combinadas",
+        "body": "Las celdas combinadas pueden distorsionar la lectura de los datos.",
+        "help_text": "Puedes seguir, pero es más seguro separar las celdas combinadas en el Excel para evitar errores."
+      },
+      "overlapping_tables": {
+        "title": "Hay más de una tabla en la misma hoja",
+        "body": "Detectamos tablas que se cruzan o comparten espacio en la hoja.",
+        "help_text": "Separa cada tabla en su propia hoja para que podamos importar la correcta."
+      }
+    },
+    "3_mapping_errors": {
+      "missing_required_column": {
+        "title": "Falta la columna obligatoria: {{column_name}}",
+        "body": "Necesitamos esta columna para continuar con la importación.",
+        "help_text": "Agrega la columna en tu Excel o selecciónala manualmente en el mapeo de columnas."
+      },
+      "ambiguous_column": {
+        "title": "¿Qué dato contiene {{column_name}}?",
+        "body": "No tenemos claro qué información representa esta columna.",
+        "help_text": "Indica su significado en la lista desplegable antes de seguir."
+      },
+      "invalid_data_type": {
+        "title": "Formato inesperado en {{column_name}}",
+        "body": "Esperábamos datos de tipo {{expected_type}}, pero encontramos valores con otro formato.",
+        "help_text": "Corrige el formato de las celdas (fechas, números, etc.) o selecciona el tipo adecuado en el mapeo."
+      }
+    },
+    "4_reference_errors": {
+      "client_not_found": {
+        "title": "Cliente no encontrado",
+        "body": "No ubicamos el cliente '{{value}}' en el sistema.",
+        "help_text": "Revisa la ortografía o crea primero el cliente en el sistema antes de importar."
+      },
+      "address_mismatch": {
+        "title": "La dirección no coincide",
+        "body": "La dirección '{{value}}' no está asociada al cliente seleccionado.",
+        "help_text": "Elige una dirección válida de la lista desplegable o ajusta el cliente correspondiente."
+      },
+      "technician_unknown": {
+        "title": "No reconocemos al técnico",
+        "body": "El nombre o identificador '{{value}}' no coincide con un técnico registrado.",
+        "help_text": "Selecciona un técnico existente o deja el campo vacío para asignarlo después."
+      }
+    },
+    "5_template_logic_errors": {
+      "similar_template_found": {
+        "title": "Encontramos una plantilla similar",
+        "body": "Hay una plantilla guardada que parece coincidir con tu archivo.",
+        "help_text": "Puedes reutilizarla para ahorrar tiempo o crear una nueva si prefieres ajustar el mapeo."
+      },
+      "incompatible_template": {
+        "title": "La plantilla no coincide con este Excel",
+        "body": "La plantilla seleccionada no se ajusta a la estructura actual del archivo.",
+        "help_text": "Prueba con otra plantilla o ajusta el mapeo de columnas manualmente."
+      },
+      "mandatory_fields_empty": {
+        "title": "Faltan datos obligatorios",
+        "body": "La plantilla exige campos que vienen vacíos en el Excel.",
+        "help_text": "Completa esos campos en el archivo o excluye las filas con faltantes antes de importar."
+      }
+    },
+    "6_ml_data_quality": {
+      "missing_data_risk": {
+        "title": "Datos incompletos: riesgo de precisión",
+        "body": "Algunas columnas tienen datos faltantes que pueden reducir la calidad de los reportes.",
+        "help_text": "Revisa y completa las columnas marcadas para mejorar la precisión antes de continuar."
+      },
+      "critical_data_missing": {
+        "title": "Falta un dato crítico",
+        "body": "Necesitamos este dato y el sistema no puede deducirlo automáticamente.",
+        "help_text": "Completa el dato aquí mismo o elimina la fila si no puedes aportar la información."
+      }
+    },
+    "7_row_level_errors": {
+      "incomplete_row": {
+        "title": "La fila está incompleta",
+        "body": "Hay campos obligatorios sin datos en esta fila.",
+        "help_text": "Completa los datos faltantes o excluye la fila para seguir con el resto."
+      },
+      "invalid_row": {
+        "title": "No pudimos procesar esta fila",
+        "body": "La fila no cumple los requisitos mínimos para crear un ticket.",
+        "help_text": "Corrige los campos marcados en rojo o descarta la fila para continuar."
+      }
+    },
+    "8_execution_errors": {
+      "import_interrupted": {
+        "title": "La importación se detuvo",
+        "body": "Ocurrió un error técnico y pausamos el proceso para evitar duplicados.",
+        "help_text": "Puedes volver a intentarlo cuando quieras; no se crearon tickets nuevos durante la interrupción."
+      },
+      "partial_import": {
+        "title": "Importación completada con alertas",
+        "body": "Algunos tickets se crearon correctamente, pero otros quedaron pendientes por errores.",
+        "help_text": "Descarga el reporte de errores, corrige las filas indicadas y vuelve a importarlas."
+      }
+    },
+    "9_post_import_errors": {
+      "tickets_skipped": {
+        "title": "Algunos tickets se omitieron",
+        "body": "No se crearon todos los tickets porque ciertas filas tenían errores.",
+        "help_text": "Ajusta esas filas en tu Excel y vuelve a importar solo las corregidas."
+      }
+    },
+    "10_preventive_messages": {
+      "validation_loading": {
+        "title": "Validando el archivo...",
+        "body": "Estamos analizando tu Excel para detectar errores antes de crear tickets.",
+        "help_text": "Este paso toma solo unos segundos."
+      },
+      "final_confirmation": {
+        "title": "¿Listo para importar?",
+        "body": "Iniciaremos la importación en segundo plano una vez confirmes.",
+        "help_text": "Te avisaremos cuando el proceso termine."
+      }
+    }
+  }
+}
