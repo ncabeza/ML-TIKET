@@ -5,6 +5,7 @@ harder to keep in the Node.js stack. It exposes an HTTP interface that
 other services can call during the preview/run phases of the import
 pipeline.
 """
+from __future__ import annotations
 from io import BytesIO
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 

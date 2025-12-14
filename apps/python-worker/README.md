@@ -37,11 +37,16 @@ curl -F "file=@/path/to/any.xlsx" http://localhost:8000/preview
 
 ## Quick preview of the provided sample Excels
 Sample spreadsheets are stored in the repo-level `excels/` directory. You can
-exercise the parsing logic locally without starting the FastAPI server:
+exercise the parsing and ML summarization logic locally without starting the
+FastAPI server:
 
 ```bash
 python apps/python-worker/preview_excels.py
 ```
+
+By default the helper also prints an ML-oriented interpretation per sheet. Use
+`--no-ml` to skip that step or `--ml-rows 1000` to increase the profiling
+sample size.
 
 Pass your own file or directory paths to target different inputs:
 
