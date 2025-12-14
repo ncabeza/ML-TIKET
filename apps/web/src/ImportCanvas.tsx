@@ -163,6 +163,20 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
     [availableColumns],
   );
 
+  const columnGuesses = React.useMemo(() => {
+    const guesses: Record<string, string | null> = {};
+
+    requiredFields.forEach((field) => {
+      const guess = normalizedColumns.find(({ normalized }) =>
+        fieldKeywords[field.id].some((keyword) => normalized.includes(keyword)),
+      );
+
+      guesses[field.id] = guess?.original ?? null;
+    });
+
+    return guesses;
+  }, [fieldKeywords, normalizedColumns, requiredFields]);
+
   const orderedSteps: Step[] = [
     "upload",
     "mode",
@@ -183,42 +197,59 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
     if (!preview) return;
 
     setColumnMapping((current) => {
+      let changed = false;
       const next = { ...current };
 
       requiredFields.forEach((field) => {
         if (next[field.id]) return;
-        const guess = normalizedColumns.find(({ normalized }) =>
-          fieldKeywords[field.id].some((keyword) => normalized.includes(keyword)),
-        );
-        next[field.id] = guess?.original ?? null;
+
+        const guess = columnGuesses[field.id];
+        if (guess === undefined) return;
+
+        if (next[field.id] !== guess) {
+          next[field.id] = guess;
+          changed = true;
+        }
       });
 
-      return next;
+      return changed ? next : current;
     });
-  }, [fieldKeywords, normalizedColumns, preview, requiredFields]);
+  }, [columnGuesses, preview, requiredFields]);
+
+  const classificationTypeByColumn = React.useMemo(() => {
+    const map = new Map<string, FieldType>();
+
+    if (preview) {
+      preview.classifications.forEach((item) => {
+        map.set(item.column.toLowerCase(), item.type);
+      });
+    }
+
+    return map;
+  }, [preview]);
 
   React.useEffect(() => {
     if (!preview) return;
 
     setFieldTypeMapping((current) => {
+      let changed = false;
       const next = { ...current };
 
       requiredFields.forEach((field) => {
         const mappedColumn = columnMapping[field.id];
         if (!mappedColumn || next[field.id]) return;
 
-        const classification = preview.classifications.find(
-          (item) => item.column.toLowerCase() === mappedColumn.toLowerCase(),
-        );
+        const inferredType = classificationTypeByColumn.get(mappedColumn.toLowerCase());
 
-        if (classification) {
-          next[field.id] = classification.type;
+        if (inferredType && next[field.id] !== inferredType) {
+          next[field.id] = inferredType;
+          changed = true;
         }
       });
 
-      return next;
+      return changed ? next : current;
     });
-  }, [columnMapping, preview, requiredFields]);
+  }, [classificationTypeByColumn, columnMapping, preview, requiredFields]);
 
   const handleUpload: React.ChangeEventHandler<HTMLInputElement> = async (
     event,
