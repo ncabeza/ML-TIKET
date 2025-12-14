@@ -20,8 +20,8 @@ const basePayload = {
 };
 
 describe("import routes", () => {
-  beforeEach(() => {
-    resetJobs();
+  beforeEach(async () => {
+    await resetJobs();
     vi.restoreAllMocks();
   });
 
