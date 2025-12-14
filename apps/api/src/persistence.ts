@@ -3,6 +3,10 @@ import { ImportJob, TemplateSuggestionResult } from "@shared/types";
 
 let inMemoryJobs: Record<string, ImportJob> = {};
 
+export function resetJobs() {
+  inMemoryJobs = {};
+}
+
 export async function persistJob(
   partial: Pick<ImportJob, "project_id" | "created_by" | "mode" | "upload">
 ): Promise<ImportJob> {
