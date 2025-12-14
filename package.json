@@ -9,7 +9,7 @@
   "scripts": {
     "lint": "echo 'lint not configured'",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "node scripts/test.js"
   },
   "devDependencies": {
     "@types/node": "^22.9.4",
