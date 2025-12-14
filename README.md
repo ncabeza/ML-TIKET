@@ -56,3 +56,4 @@ These files provide a blueprint for the production implementation, preserving th
 ## Validation flow
 
 - 📄 Detailed Spanish overview: [`docs/validation-flow-es.md`](docs/validation-flow-es.md)
+- 🤖 Guía de ML para parsear Excel sin perder estructura: [`docs/ml-excel-es.md`](docs/ml-excel-es.md)
