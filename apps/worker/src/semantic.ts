@@ -65,6 +65,12 @@ export async function matchTemplates(
   const strongMatch = sorted.find((t) => t.score >= 0.85);
   const proposeNewTemplate = !strongMatch && sorted.every((t) => t.score < 0.7);
 
+  const topCandidate = strongMatch ?? sorted[0];
+  const friendlyScore = topCandidate ? Math.round(topCandidate.score * 100) : undefined;
+  const technicianSummary = topCandidate
+    ? `Detectamos que el Excel se parece a la plantilla ${topCandidate.template_id} (v${topCandidate.template_version_id}) con una coincidencia aproximada del ${friendlyScore}%. Te dejamos el mapeo sugerido para que sólo ajustes lo necesario y confirmes antes de crear tickets.`
+    : "No encontramos coincidencias sólidas; proponemos crear una nueva plantilla y mapear las columnas críticas con el operador.";
+
   const dateColumns = classifications.filter((c) => c.type === "date").map((c) => c.column);
   const repeatUploadHint = matchedFingerprint
     ? {
@@ -83,6 +89,24 @@ export async function matchTemplates(
       }
     : undefined;
 
+  const nextSteps: string[] = [];
+  if (topCandidate) {
+    nextSteps.push(
+      "Valida que los encabezados y las fechas claves coincidan con la plantilla sugerida; ajusta nombres si hace falta."
+    );
+  }
+  if (repeatUploadHint) {
+    nextSteps.push(
+      repeatUploadHint.note,
+      "Confirma los campos de cliente y proyecto antes de enviar a ejecución para evitar rebotes."
+    );
+  }
+  if (proposeNewTemplate) {
+    nextSteps.push(
+      "Sin una coincidencia fuerte, crea un borrador de plantilla nueva y pídele a un líder técnico que la apruebe."
+    );
+  }
+
   return {
     strongMatch,
     suggestions: sorted,
@@ -91,6 +115,8 @@ export async function matchTemplates(
       ? "Schema coverage and neural scores exceed the safety bar; request explicit confirmation."
       : "No template cleared the 0.7 similarity bar after neural adjustment; suggest drafting a new template with human review.",
     repeatUploadHint,
+    technicianSummary,
+    nextSteps,
   };
 }
 

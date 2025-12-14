@@ -165,6 +165,8 @@ export interface TemplateSuggestionResult {
   proposeNewTemplate: boolean;
   rationale: string;
   repeatUploadHint?: RepeatUploadHint;
+  technicianSummary: string;
+  nextSteps?: string[];
 }
 
 export interface RepeatUploadHint {

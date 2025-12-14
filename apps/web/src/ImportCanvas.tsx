@@ -46,7 +46,31 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({ preview }) => {
           <h3>Estructura detectada</h3>
           <pre>{JSON.stringify(preview.artifact.struct_tree, null, 2)}</pre>
           <h4>Sugerencias de plantilla</h4>
-          <pre>{JSON.stringify(preview.templateSuggestion, null, 2)}</pre>
+          <p>{preview.templateSuggestion.technicianSummary}</p>
+          {preview.templateSuggestion.strongMatch ? (
+            <p>
+              Coincidencia principal: {preview.templateSuggestion.strongMatch.template_id}
+              {" "}(v{preview.templateSuggestion.strongMatch.template_version_id}) con
+              {" "}
+              {(preview.templateSuggestion.strongMatch.score * 100).toFixed(0)}% de similitud.
+            </p>
+          ) : (
+            <p>Sin coincidencia fuerte: se sugiere evaluar una nueva plantilla.</p>
+          )}
+          {preview.templateSuggestion.nextSteps?.length ? (
+            <div>
+              <strong>Próximos pasos sugeridos para el técnico:</strong>
+              <ul>
+                {preview.templateSuggestion.nextSteps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <details>
+            <summary>Ver detalle crudo</summary>
+            <pre>{JSON.stringify(preview.templateSuggestion, null, 2)}</pre>
+          </details>
           <h4>Tipos de campo</h4>
           <pre>{JSON.stringify(preview.classifications, null, 2)}</pre>
           <h4>Perfil de faltantes</h4>
