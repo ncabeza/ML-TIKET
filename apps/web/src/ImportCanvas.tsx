@@ -1,5 +1,5 @@
 import React from "react";
-import { PreviewPayload } from "@shared/types";
+import { ImportMode, PreviewPayload } from "@shared/types";
 
 type Step =
   | "upload"
@@ -18,8 +18,17 @@ export interface ImportCanvasProps {
   onRun(): Promise<void>;
 }
 
-export const ImportCanvas: React.FC<ImportCanvasProps> = ({ preview }) => {
+export const ImportCanvas: React.FC<ImportCanvasProps> = ({
+  preview,
+  onUpload,
+  onSelectMode,
+  onConfirmTemplate,
+  onRun,
+}) => {
   const [step, setStep] = React.useState<Step>("upload");
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [selectedMode, setSelectedMode] = React.useState<ImportMode | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
   const steps: Record<Step, string> = {
     upload: "Upload Excel",
@@ -31,15 +40,152 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({ preview }) => {
     run: "Ejecución en background",
   };
 
+  const orderedSteps: Step[] = [
+    "upload",
+    "mode",
+    "structure",
+    "mapping",
+    "template",
+    "validation",
+    "run",
+  ];
+
+  React.useEffect(() => {
+    if (preview && (step === "upload" || step === "mode")) {
+      setStep("structure");
+    }
+  }, [preview, step]);
+
+  const handleUpload: React.ChangeEventHandler<HTMLInputElement> = async (
+    event,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      await onUpload(file);
+      setStep("mode");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error subiendo archivo");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSelectMode = (mode: ImportMode) => {
+    setSelectedMode(mode);
+    onSelectMode(mode);
+    setStep("structure");
+  };
+
+  const handleConfirmTemplate = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await onConfirmTemplate();
+      setStep("validation");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo confirmar la plantilla",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRun = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await onRun();
+      setStep("run");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo ejecutar");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const goToStep = (target: Step) => {
+    if (orderedSteps.includes(target)) {
+      setStep(target);
+    }
+  };
+
   return (
     <div className="import-canvas">
       <ol>
         {Object.entries(steps).map(([key, label]) => (
-          <li key={key} className={step === key ? "active" : ""}>
+          <li
+            key={key}
+            className={step === key ? "active" : ""}
+            onClick={() => goToStep(key as Step)}
+          >
             {label}
           </li>
         ))}
       </ol>
+
+      <section>
+        {step === "upload" && (
+          <div>
+            <label>
+              Subir Excel
+              <input type="file" accept=".xlsx,.xls" onChange={handleUpload} />
+            </label>
+            {isLoading && <p>Cargando archivo...</p>}
+          </div>
+        )}
+
+        {step === "mode" && (
+          <div>
+            <p>Selecciona el tipo de carga:</p>
+            <div className="mode-buttons">
+              <button
+                type="button"
+                className={selectedMode === "POST_SERVICE" ? "active" : ""}
+                onClick={() => handleSelectMode("POST_SERVICE")}
+              >
+                Post Service
+              </button>
+              <button
+                type="button"
+                className={selectedMode === "MASS_CREATE" ? "active" : ""}
+                onClick={() => handleSelectMode("MASS_CREATE")}
+              >
+                Carga Masiva
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "template" && (
+          <div>
+            <p>
+              Confirma la plantilla antes de enviar a validación final. Esta acción
+              persiste la decisión del técnico.
+            </p>
+            <button type="button" onClick={handleConfirmTemplate} disabled={isLoading}>
+              Confirmar plantilla
+            </button>
+          </div>
+        )}
+
+        {step === "validation" && (
+          <div>
+            <p>Todo listo. Ejecuta la importación en background.</p>
+            <button type="button" onClick={handleRun} disabled={isLoading}>
+              Ejecutar importación
+            </button>
+          </div>
+        )}
+      </section>
+
+      {error && <p className="error">{error}</p>}
 
       {preview && (
         <section>
