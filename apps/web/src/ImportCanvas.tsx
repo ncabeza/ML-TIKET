@@ -233,6 +233,13 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
     (field) => field.required && !columnMapping[field.id],
   );
 
+  const requiredTypeGaps = requiredFields.filter(
+    (field) => field.required && columnMapping[field.id] && !fieldTypeMapping[field.id],
+  );
+
+  const canProceedToTemplate =
+    missingRequired.length === 0 && requiredTypeGaps.length === 0;
+
   const handleMappingChange = (fieldId: string, value: string) => {
     setColumnMapping((current) => ({
       ...current,
@@ -370,7 +377,18 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
                   Si decides continuar con campos sin match, el sistema bloqueará la ejecución
                   hasta resolverlos o habilitar imputación manual.
                 </p>
-                <button type="button" onClick={() => setStep("template")}>Continuar a plantilla</button>
+                {requiredTypeGaps.length > 0 && (
+                  <p className="warning">
+                    Define el tipo de dato para cada campo obligatorio antes de continuar.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setStep("template")}
+                  disabled={!canProceedToTemplate}
+                >
+                  Continuar a plantilla
+                </button>
               </div>
             </div>
           </div>
