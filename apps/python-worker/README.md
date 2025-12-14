@@ -16,6 +16,11 @@ any `.xlsx` upload.
   JSON (string values) up to 10,000 rows per sheet for downstream inserts.
   The optional `sheet` query parameter also works here to limit processing to
   a single worksheet.
+- `POST /ml/pipeline`: returns an ML-oriented profile per sheet (missingness,
+  outlier caps, encoded feature preview, and the preprocessing steps
+  configured for that sheet). It accepts the same upload contract as the
+  other endpoints plus an optional `sample_rows` query parameter (defaults to
+  2,000) to keep processing bounded.
 
 ## Local development
 ```bash
