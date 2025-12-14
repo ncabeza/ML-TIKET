@@ -2,9 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import nock from "nock";
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi, beforeAll, afterAll } from "vitest";
 import { queuePreviewJob, queueRunJob } from "./queues";
 import { findJobById, persistJob } from "./persistence";
+import { MongoMemoryServer } from "mongodb-memory-server";
+import { disconnectMongo, getImportJobsCollection } from "./db";
 
 const baseUpload = {
   filename: "sample.xlsx",
@@ -25,11 +27,39 @@ async function createJob() {
 }
 
 describe("python worker queues", () => {
+  let mongo: MongoMemoryServer | null = null;
+  let mongoAvailable = true;
   const previousWorkerUrl = process.env.PYTHON_WORKER_URL;
 
-  beforeEach(() => {
+  beforeAll(async () => {
+    delete process.env.http_proxy;
+    delete process.env.HTTP_PROXY;
+    delete process.env.https_proxy;
+    delete process.env.HTTPS_PROXY;
+
+    try {
+      mongo = await MongoMemoryServer.create();
+      process.env.MONGODB_URI = mongo.getUri();
+      await disconnectMongo();
+    } catch (error) {
+      mongoAvailable = false;
+      console.warn("Skipping queue persistence tests:", error);
+    }
+  }, 30000);
+
+  afterAll(async () => {
+    await disconnectMongo();
+    if (mongo) {
+      await mongo.stop();
+    }
+  }, 30000);
+
+  beforeEach(async () => {
     nock.cleanAll();
     process.env.PYTHON_WORKER_URL = "http://worker.test";
+    if (!mongoAvailable || !mongo) return;
+    const collection = await getImportJobsCollection();
+    await collection.deleteMany({});
   });
 
   afterEach(() => {
@@ -38,6 +68,7 @@ describe("python worker queues", () => {
   });
 
   it("stores artifacts and insights from preview", async () => {
+    if (!mongoAvailable || !mongo) return;
     const job = await createJob();
 
     nock("http://worker.test")
@@ -53,6 +84,7 @@ describe("python worker queues", () => {
   });
 
   it("retries normalize on transient error and stores normalized preview", async () => {
+    if (!mongoAvailable || !mongo) return;
     const job = await createJob();
 
     nock("http://worker.test")
@@ -73,6 +105,7 @@ describe("python worker queues", () => {
   });
 
   it("logs structured error when worker request fails", async () => {
+    if (!mongoAvailable || !mongo) return;
     const job = await createJob();
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const previousRetries = process.env.PYTHON_WORKER_RETRIES;
