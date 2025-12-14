@@ -52,6 +52,42 @@ describe("analyzePotentialIssues", () => {
     expect(result.issues.find((issue) => issue.code === "missingness-mnar")?.level).toBe("error");
   });
 
+  it("blocks execution when missingness forbids imputation even if signal is non-MNAR", () => {
+    const job = buildJob({
+      structural_artifact_id: "artifact-1",
+      template_resolution: { template_version_id: "v2" },
+      ml_insights: {
+        missingness_profile: {
+          signal: "MAR",
+          confidence: 0.58,
+          imputation_permitted: false,
+          blockers: ["Valores clave ausentes en columnas de negocio"],
+        },
+      },
+    });
+
+    const result = analyzePotentialIssues(job);
+
+    expect(result.ready_to_run).toBe(false);
+    expect(result.issues.find((issue) => issue.code === "missingness-blocked")?.level).toBe(
+      "error"
+    );
+  });
+
+  it("treats missing ML insights as a blocking condition to avoid blind runs", () => {
+    const job = buildJob({
+      structural_artifact_id: "artifact-1",
+      template_resolution: { template_version_id: "v3" },
+    });
+
+    const result = analyzePotentialIssues(job);
+
+    expect(result.ready_to_run).toBe(false);
+    expect(result.issues.find((issue) => issue.code === "ml-insights-missing")?.level).toBe(
+      "error"
+    );
+  });
+
   it("allows execution when the job is fully prepared", () => {
     const job = buildJob({
       structural_artifact_id: "artifact-1",

@@ -55,10 +55,23 @@ export function analyzePotentialIssues(job: ImportJob): JobDiagnostics {
 
   if (!job.ml_insights) {
     addIssue(issues, {
-      level: "warning",
+      level: "error",
       code: "ml-insights-missing",
       message: "No se almacenaron insights de ML; faltan sugerencias para columnas y plantillas.",
-      recommendation: "Ejecuta nuevamente la previsualización o revisa los registros del worker.",
+      recommendation:
+        "Ejecuta nuevamente la previsualización o revisa los registros del worker antes de intentar la corrida.",
+    });
+  }
+
+  if (missingness && missingness.signal !== "MNAR" && missingness.imputation_permitted === false) {
+    addIssue(issues, {
+      level: "error",
+      code: "missingness-blocked",
+      message:
+        "El perfil de missingness no permite imputar de forma segura; detén la ejecución hasta contar con datos completos.",
+      recommendation:
+        missingness.blockers?.join(" ") ??
+        "Repite la previsualización y corrige columnas críticas antes de reintentar la importación.",
     });
   }
 
