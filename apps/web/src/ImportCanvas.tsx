@@ -1,5 +1,59 @@
 import React from "react";
-import { ImportMode, PreviewPayload } from "@shared/types";
+import { FieldType, ImportMode, PreviewPayload } from "@shared/types";
+
+type RequiredField = {
+  id: string;
+  label: string;
+  required: boolean;
+  hint?: string;
+  synonyms?: string[];
+};
+
+const REQUIRED_FIELDS: RequiredField[] = [
+  {
+    id: "cliente",
+    label: "Cliente",
+    required: true,
+    hint: "Campo primario para validar el proyecto.",
+    synonyms: ["client", "razon social"],
+  },
+  {
+    id: "direccion",
+    label: "Dirección",
+    required: true,
+    hint: "Necesario para asociar el ticket a la ubicación correcta.",
+    synonyms: ["address", "ubicacion"],
+  },
+  {
+    id: "fecha_visita",
+    label: "Fecha de visita",
+    required: true,
+    hint: "Formato ISO recomendado (AAAA-MM-DD).",
+    synonyms: ["fecha", "visit date"],
+  },
+  {
+    id: "tecnico",
+    label: "Técnico asignado",
+    required: false,
+    hint: "Ayuda a auto-asignar el ticket si hay coincidencia.",
+    synonyms: ["tecnico", "technician"],
+  },
+];
+
+const FIELD_TYPE_OPTIONS: { value: FieldType; label: string; helper: string }[] = [
+  { value: "text", label: "Texto", helper: "Para descripciones, nombres y cadenas." },
+  {
+    value: "date",
+    label: "Fecha",
+    helper: "Formato ISO recomendado (AAAA-MM-DD) para evitar ambigüedad.",
+  },
+  { value: "number", label: "Número", helper: "Cantidades, conteos o importes." },
+  { value: "boolean", label: "Booleano", helper: "Valores de sí/no o estados binarios." },
+  { value: "address", label: "Dirección", helper: "Ubicaciones físicas o geográficas." },
+  { value: "photo", label: "Foto", helper: "Columnas que referencian imágenes o URLs." },
+  { value: "select", label: "Selección", helper: "Opciones únicas de catálogo controlado." },
+  { value: "multiselect", label: "Selección múltiple", helper: "Listas separadas por coma." },
+];
 
 type Step =
   | "upload"
@@ -29,6 +83,10 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
   const [isLoading, setIsLoading] = React.useState(false);
   const [selectedMode, setSelectedMode] = React.useState<ImportMode | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [columnMapping, setColumnMapping] = React.useState<Record<string, string | null>>({});
+  const [fieldTypeMapping, setFieldTypeMapping] = React.useState<Record<string, FieldType | "">>(
+    {},
+  );
 
   const steps: Record<Step, string> = {
     upload: "Upload Excel",
@@ -39,6 +97,16 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
     validation: "Validación final",
     run: "Ejecución en background",
   };
+
+  const requiredFields = React.useMemo(() => REQUIRED_FIELDS, []);
+
+  const availableColumns = React.useMemo(() => {
+    if (!preview) return [] as string[];
+    const detected = preview.artifact.detected_tables.flatMap((table) =>
+      table.columns.map((col) => col.name),
+    );
+    return Array.from(new Set(detected));
+  }, [preview]);
 
   const orderedSteps: Step[] = [
     "upload",
@@ -55,6 +123,51 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
       setStep("structure");
     }
   }, [preview, step]);
+
+  React.useEffect(() => {
+    if (!preview) return;
+
+    setColumnMapping((current) => {
+      const next = { ...current };
+
+      requiredFields.forEach((field) => {
+        if (next[field.id]) return;
+        const guess = availableColumns.find((col) => {
+          const normalized = col.toLowerCase();
+          return (
+            normalized.includes(field.label.toLowerCase()) ||
+            field.synonyms?.some((syn) => normalized.includes(syn.toLowerCase()))
+          );
+        });
+        next[field.id] = guess ?? null;
+      });
+
+      return next;
+    });
+  }, [availableColumns, preview, requiredFields]);
+
+  React.useEffect(() => {
+    if (!preview) return;
+
+    setFieldTypeMapping((current) => {
+      const next = { ...current };
+
+      requiredFields.forEach((field) => {
+        const mappedColumn = columnMapping[field.id];
+        if (!mappedColumn || next[field.id]) return;
+
+        const classification = preview.classifications.find(
+          (item) => item.column.toLowerCase() === mappedColumn.toLowerCase(),
+        );
+
+        if (classification) {
+          next[field.id] = classification.type;
+        }
+      });
+
+      return next;
+    });
+  }, [columnMapping, preview, requiredFields]);
 
   const handleUpload: React.ChangeEventHandler<HTMLInputElement> = async (
     event,
@@ -116,6 +229,24 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
     }
   };
 
+  const missingRequired = requiredFields.filter(
+    (field) => field.required && !columnMapping[field.id],
+  );
+
+  const handleMappingChange = (fieldId: string, value: string) => {
+    setColumnMapping((current) => ({
+      ...current,
+      [fieldId]: value === "__no_match__" ? null : value,
+    }));
+  };
+
+  const handleFieldTypeChange = (fieldId: string, value: FieldType | "") => {
+    setFieldTypeMapping((current) => ({
+      ...current,
+      [fieldId]: value,
+    }));
+  };
+
   return (
     <div className="import-canvas">
       <ol>
@@ -159,6 +290,88 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
               >
                 Carga Masiva
               </button>
+            </div>
+          </div>
+        )}
+
+        {step === "structure" && preview && (
+          <div>
+            <p>Revisa la estructura detectada y continúa al mapeo asistido.</p>
+            <button type="button" onClick={() => setStep("mapping")}>Ir a mapeo</button>
+          </div>
+        )}
+
+        {step === "mapping" && (
+          <div className="mapping-grid">
+            <div>
+              <h3>Campos obligatorios sin match</h3>
+              <p>
+                Detectamos {missingRequired.length} campo(s) sin coincidencia directa en tu Excel.
+                Alinea cada campo con una columna o marca que requiere tratamiento manual.
+              </p>
+              <ul>
+                {missingRequired.map((field) => (
+                  <li key={field.id} className="missing-pill">
+                    {field.label} — {field.hint}
+                  </li>
+                ))}
+              </ul>
+              {missingRequired.length === 0 && (
+                <p className="success">Todos los campos críticos tienen un candidato de mapeo.</p>
+              )}
+            </div>
+
+            <div>
+              <h4>Mapeo asistido</h4>
+              <div className="mapping-table">
+                {requiredFields.map((field) => (
+                  <div key={field.id} className="mapping-row">
+                    <div>
+                      <strong>{field.label}</strong>
+                      <p className="hint">{field.hint}</p>
+                    </div>
+                    <div className="mapping-controls">
+                      <select
+                        value={columnMapping[field.id] ?? ""}
+                        onChange={(event) => handleMappingChange(field.id, event.target.value)}
+                      >
+                        <option value="">Selecciona columna</option>
+                        {availableColumns.map((col) => (
+                          <option key={col} value={col}>
+                            {col}
+                          </option>
+                        ))}
+                        <option value="__no_match__">No existe en el Excel</option>
+                      </select>
+
+                      <select
+                        value={fieldTypeMapping[field.id] ?? ""}
+                        onChange={(event) =>
+                          handleFieldTypeChange(field.id, event.target.value as FieldType | "")
+                        }
+                      >
+                        <option value="">Tipo de campo</option>
+                        {FIELD_TYPE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <small className="hint subtle">
+                      {FIELD_TYPE_OPTIONS.find((option) => option.value === fieldTypeMapping[field.id])
+                        ?.helper || "Elige el tipo para validar formato y transformaciones."}
+                    </small>
+                  </div>
+                ))}
+              </div>
+              <div className="mapping-actions">
+                <p>
+                  Si decides continuar con campos sin match, el sistema bloqueará la ejecución
+                  hasta resolverlos o habilitar imputación manual.
+                </p>
+                <button type="button" onClick={() => setStep("template")}>Continuar a plantilla</button>
+              </div>
             </div>
           </div>
         )}
