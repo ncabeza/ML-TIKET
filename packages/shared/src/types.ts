@@ -40,6 +40,8 @@ export interface MLInsights {
   inferred_field_types?: Record<string, { type: FieldType; confidence: number }>;
   missingness_profile?: MissingnessProfile;
   technician_assignment?: TechnicianAssignmentInsight;
+  normalized_preview?: Record<string, unknown[]>;
+  normalization_metadata?: Record<string, { total_rows: number; truncated: boolean }>;
 }
 
 export interface DiagnosticIssue {
