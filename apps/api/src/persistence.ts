@@ -84,3 +84,7 @@ export async function storeErrorFile(id: string, storageKey: string) {
   inMemoryJobs[id] = job;
   return job;
 }
+
+export function resetPersistence() {
+  inMemoryJobs = {};
+}
