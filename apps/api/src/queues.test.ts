@@ -76,7 +76,7 @@ describe("python worker queues", () => {
       .reply(200, { structural_artifact_id: "art-123", ml_insights: { structure_confidence: 0.92 } });
 
     const response = await queuePreviewJob(job);
-    expect(response.structural_artifact_id).toBe("art-123");
+    expect(response.artifact._id).toBe("art-123");
 
     const stored = await findJobById(job._id);
     expect(stored?.structural_artifact_id).toBe("art-123");
@@ -97,7 +97,8 @@ describe("python worker queues", () => {
       });
 
     const response = await queueRunJob(job);
-    expect(response.sheets.Sheet1[0].A).toBe("1");
+    const sheetRows = response.sheets.Sheet1 as Array<{ A: string }>;
+    expect(sheetRows[0].A).toBe("1");
 
     const stored = await findJobById(job._id);
     expect(stored?.ml_insights?.normalized_preview?.Sheet1).toHaveLength(1);
