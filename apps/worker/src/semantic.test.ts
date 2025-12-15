@@ -122,6 +122,6 @@ describe("detectMissingness", () => {
 
     expect(result.profile.signal).toBe("MNAR");
     expect(result.profile.imputation_permitted).toBe(false);
-    expect(result.profile.blockers.length).toBeGreaterThan(0);
+    expect(result.profile.blockers?.length ?? 0).toBeGreaterThan(0);
   });
 });

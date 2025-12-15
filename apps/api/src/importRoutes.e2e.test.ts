@@ -61,7 +61,29 @@ describe("import routes", () => {
 
   it("calls preview orchestration and returns payload", async () => {
     const created = await request(app).post("/api/import/jobs").send(basePayload);
-    const previewPayload = { ok: true } as unknown as PreviewPayload;
+    const previewPayload: PreviewPayload = {
+      job: { ...created.body, status: "PREVIEW_READY" },
+      artifact: {
+        _id: "art-1",
+        job_id: created.body._id,
+        struct_tree: [],
+        detected_tables: [],
+        anchors: [],
+        formula_index: [],
+        format_groups: [],
+        compressed_representation: { anchorHash: "", formulaFingerprint: "", formatClusters: {} },
+      },
+      classifications: [],
+      templateSuggestion: {
+        strongMatch: undefined,
+        suggestions: [],
+        proposeNewTemplate: true,
+        rationale: "pending match",
+        technicianSummary: "review",
+      },
+      missingness: { profile: { signal: "MAR", confidence: 0.5, imputation_permitted: false }, notes: [] },
+      technicianAssignment: { matches: [], policy: "REVIEW", notes: [] },
+    };
 
     const spy = vi
       .spyOn(orchestration, "orchestratePreview")
@@ -72,7 +94,7 @@ describe("import routes", () => {
       .send();
 
     expect(response.status).toBe(200);
-    expect(response.body.ok).toBe(true);
+    expect(response.body.artifact._id).toBe("art-1");
     expect(spy).toHaveBeenCalled();
   });
 
@@ -121,7 +143,10 @@ describe("import routes", () => {
 
   it("runs import for a job", async () => {
     const created = await request(app).post("/api/import/jobs").send(basePayload);
-    const runResult = { status: "queued" };
+    const runResult = {
+      sheets: { Sheet1: [{ A: "queued" }] },
+      metadata: { Sheet1: { total_rows: 1, truncated: false } },
+    };
     const spy = vi
       .spyOn(orchestration, "orchestrateRun")
       .mockResolvedValue(runResult as Awaited<ReturnType<typeof orchestration.orchestrateRun>>);
@@ -131,7 +156,7 @@ describe("import routes", () => {
       .send();
 
     expect(response.status).toBe(200);
-    expect(response.body.status).toBe("queued");
+    expect(response.body.sheets.Sheet1[0].A).toBe("queued");
     expect(spy).toHaveBeenCalled();
   });
 });

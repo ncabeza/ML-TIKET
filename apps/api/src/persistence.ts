@@ -1,8 +1,18 @@
 import crypto from "crypto";
 import { ImportJob, TemplateSuggestionResult } from "@shared/types";
+import { ModifyResult, WithId } from "mongodb";
 import { getImportJobsCollection } from "./db";
 
 const inMemoryJobs: Record<string, ImportJob> = {};
+
+function unwrapResult(result: ModifyResult<ImportJob> | WithId<ImportJob> | null): ImportJob {
+  if (!result) throw new Error("Job not found");
+  if ("value" in result) {
+    if (!result.value) throw new Error("Job not found");
+    return result.value;
+  }
+  return result;
+}
 
 function useMemoryStore() {
   return !process.env.MONGODB_URI;
@@ -84,8 +94,7 @@ export async function updateJobStatus(id: string, status: ImportJob["status"]) {
     { $set: { status, updated_at: now } },
     { returnDocument: "after" }
   );
-  if (!result.value) throw new Error("Job not found");
-  return result.value;
+  return unwrapResult(result);
 }
 
 export async function attachArtifact(id: string, artifactId: string) {
@@ -107,8 +116,7 @@ export async function attachArtifact(id: string, artifactId: string) {
     { $set: { structural_artifact_id: artifactId, updated_at: now } },
     { returnDocument: "after" }
   );
-  if (!result.value) throw new Error("Job not found");
-  return result.value;
+  return unwrapResult(result);
 }
 
 export async function updateJobTemplateResolution(id: string, resolution: TemplateSuggestionResult) {
@@ -158,8 +166,7 @@ export async function updateJobTemplateResolution(id: string, resolution: Templa
     { $set: update, $setOnInsert: insertDefaults },
     { returnDocument: "after", upsert: true }
   );
-  if (!result.value) throw new Error("Job not found");
-  return result.value;
+  return unwrapResult(result);
 }
 
 export async function storeInsights(
@@ -204,8 +211,7 @@ export async function storeInsights(
     },
     { returnDocument: "after", upsert: true }
   );
-  if (!result.value) throw new Error("Job not found");
-  return result.value;
+  return unwrapResult(result);
 }
 
 export async function storeErrorFile(id: string, storageKey: string) {
@@ -237,6 +243,5 @@ export async function storeErrorFile(id: string, storageKey: string) {
     { $set: { errors_ref: storageKey, updated_at: now }, $setOnInsert: insertDefaults },
     { returnDocument: "after", upsert: true }
   );
-  if (!result.value) throw new Error("Job not found");
-  return result.value;
+  return unwrapResult(result);
 }
