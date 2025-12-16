@@ -77,6 +77,9 @@ describe("python worker queues", () => {
 
     const response = await queuePreviewJob(job);
     expect(response.artifact._id).toBe("art-123");
+    expect(response.posDetection.missing_required).toBe(true);
+    expect(response.geolocation.ok).toBe(false);
+    expect(response.ticketTitleHint.template).toContain("Ticket sin POS");
 
     const stored = await findJobById(job._id);
     expect(stored?.structural_artifact_id).toBe("art-123");
