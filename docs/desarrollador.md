@@ -37,6 +37,11 @@ Esta guía explica cómo levantar cada pieza del proyecto, validar el código lo
    ```
 5. (Opcional) Ejecuta `python apps/python-worker/preview_excels.py` para recorrer varios Excels sin necesidad del servidor.
 
+### Pruebas rápidas
+- `npm run typecheck`: valida que los paquetes de Node compilan sin emitir archivos (usa `tsc --noEmit`).
+- `npm test`: ejecuta Vitest a través de `scripts/test.js`, que propaga los argumentos estándar y muestra una nota si pasas `--runInBand` porque Vitest ya corre en modo multihilo.
+- `curl -F "file=@excels/NOMINAS CIBERNOS - The Tiket.xlsx" http://localhost:8000/preview`: asegura que el worker de FastAPI responde antes de probar el orquestador.
+
 ## Instalación base (Node/TypeScript)
 1. Instala dependencias de la raíz (incluye workspaces):
    ```bash

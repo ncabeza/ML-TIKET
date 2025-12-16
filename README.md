@@ -53,6 +53,16 @@ Worker ML (Railway / Render / Fly.io)
 
 These files provide a blueprint for the production implementation, preserving the enterprise constraints described in the specification.
 
+## Monorepo layout
+
+- `apps/api`: Funciones serverless al estilo Vercel para orquestar los jobs de importación.
+- `apps/worker`: Pipeline de ML asistido que realiza las tareas pesadas de preprocesamiento y validación lógica.
+- `apps/python-worker`: Servicio FastAPI encargado de parsear Excels y entregar vistas previas normalizadas.
+- `apps/web`: Canvas de importación en React para guiar a los usuarios por el flujo completo.
+- `packages/shared`: Tipos y utilidades compartidas entre los distintos servicios.
+- `excels/`: Ejemplos de libros Excel listos para probar los endpoints de previsualización.
+- `docs/`: Guías funcionales y técnicas en español (API, validación, ML y automatización).
+
 ## Quickstart (Debian/Ubuntu)
 
 Sigue estos pasos para poner el repositorio en marcha rápidamente en una distro basada en Debian:
@@ -86,6 +96,14 @@ Sigue estos pasos para poner el repositorio en marcha rápidamente en una distro
    ```bash
    npm run typecheck
    ```
+
+## Comandos rápidos para desarrollo
+
+- `npm run typecheck`: Ejecuta `tsc --noEmit` sobre los paquetes de Node para validar que los tipos compilan.
+- `npm test`: Lanza Vitest mediante el wrapper de `scripts/test.js` (acepta flags estándar como `--runInBand`, que se ignora con mensaje informativo).
+- `npm run lint`: Aún no está configurado; el comando existe para mantener paridad con el resto de los scripts.
+
+Consulta `docs/desarrollador.md` para detalles adicionales de conexión entre servicios y flujos end-to-end.
 
 Consulta `docs/desarrollador.md` para una guía más extensa de los flujos y endpoints.
 
