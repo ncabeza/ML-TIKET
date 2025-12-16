@@ -63,6 +63,36 @@ export function analyzePotentialIssues(job: ImportJob): JobDiagnostics {
     });
   }
 
+  const posDetection = job.ml_insights?.pos_detection;
+  if (!posDetection) {
+    addIssue(issues, {
+      level: "error",
+      code: "pos-missing",
+      message: "No se detectó el número de POS en el Excel; la corrida debe bloquearse.",
+      recommendation:
+        "Pide al usuario que cargue el número de POS o mapee la columna correcta antes de crear tickets.",
+    });
+  } else if (posDetection.missing_required) {
+    addIssue(issues, {
+      level: "error",
+      code: "pos-required",
+      message: "El POS es obligatorio para el flujo Avant → Cibernos → Operaciones; completa el campo antes de ejecutar.",
+      recommendation: posDetection.warnings.join(" ") ||
+        "Asegura que el Excel incluya una columna de POS numérica y reintenta la previsualización.",
+    });
+  }
+
+  const geolocation = job.ml_insights?.geolocation_validation;
+  if (geolocation && !geolocation.ok) {
+    addIssue(issues, {
+      level: "error",
+      code: "geolocation-blocked",
+      message: "Faltan señales de geolocalización (dirección o POS); corrige antes de ejecutar.",
+      recommendation: geolocation.issues.join(" ") ||
+        "Incluye columna de dirección o coordenadas para validar la ubicación del POS.",
+    });
+  }
+
   if (missingness && missingness.signal !== "MNAR" && missingness.imputation_permitted === false) {
     addIssue(issues, {
       level: "error",

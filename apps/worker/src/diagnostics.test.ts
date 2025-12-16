@@ -2,6 +2,24 @@ import { describe, expect, it } from "vitest";
 import { analyzePotentialIssues } from "./diagnostics";
 import { ImportJob } from "@shared/types";
 
+const posDetectionOk = {
+  column: "POS",
+  confidence: 0.91,
+  sample_values: ["123"],
+  normalized_samples: ["POS-123"],
+  missing_required: false,
+  warnings: [],
+};
+
+const geolocationOk = {
+  address_column: "direccion",
+  latitude_column: undefined,
+  longitude_column: undefined,
+  confidence: 0.76,
+  ok: true,
+  issues: [],
+};
+
 function buildJob(overrides: Partial<ImportJob> = {}): ImportJob {
   return {
     _id: "job-1",
@@ -43,6 +61,8 @@ describe("analyzePotentialIssues", () => {
           confidence: 0.92,
           imputation_permitted: false,
         },
+        pos_detection: posDetectionOk,
+        geolocation_validation: geolocationOk,
       },
     });
 
@@ -63,6 +83,8 @@ describe("analyzePotentialIssues", () => {
           imputation_permitted: false,
           blockers: ["Valores clave ausentes en columnas de negocio"],
         },
+        pos_detection: posDetectionOk,
+        geolocation_validation: geolocationOk,
       },
     });
 
@@ -98,6 +120,8 @@ describe("analyzePotentialIssues", () => {
           confidence: 0.61,
           imputation_permitted: true,
         },
+        pos_detection: posDetectionOk,
+        geolocation_validation: geolocationOk,
       },
     });
 
