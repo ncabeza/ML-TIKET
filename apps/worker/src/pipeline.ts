@@ -1,16 +1,27 @@
 import {
   ColumnClassification,
+  GeolocationValidation,
   ImportArtifact,
   ImportJob,
   MissingnessDetectionResult,
+  POSDetection,
   PreviewPayload,
   TechnicianAssignmentInsight,
+  TicketTitleHint,
   TemplateSuggestionResult,
 } from "@shared/types";
 import crypto from "crypto";
 import { attachArtifact, storeErrorFile, storeInsights, updateJobStatus } from "../../api/src/persistence";
 import { parseExcelNative, buildStructuralTree, compressStructure } from "./structure";
-import { classifyColumns, detectMissingness, matchTemplates, recommendTechnicianAssignments } from "./semantic";
+import {
+  classifyColumns,
+  detectMissingness,
+  matchTemplates,
+  recommendTechnicianAssignments,
+  detectPOSField,
+  validateGeolocation,
+  buildTicketTitleHint,
+} from "./semantic";
 import { validateHardRules, createTicketsInBatches } from "./tickets";
 
 export function buildPreviewPipeline() {
@@ -38,6 +49,9 @@ export function buildPreviewPipeline() {
       artifact,
       classifications
     );
+    const posDetection: POSDetection = detectPOSField(artifact, classifications);
+    const geolocation: GeolocationValidation = validateGeolocation(artifact, posDetection);
+    const ticketTitleHint: TicketTitleHint = buildTicketTitleHint(posDetection);
 
     await storeInsights(job._id, {
       structure_confidence: tree.confidence,
@@ -47,6 +61,9 @@ export function buildPreviewPipeline() {
       ),
       missingness_profile: missingness.profile,
       technician_assignment: technicianAssignment,
+      pos_detection: posDetection,
+      geolocation_validation: geolocation,
+      ticket_title_hint: ticketTitleHint,
     });
 
     return {
@@ -56,6 +73,9 @@ export function buildPreviewPipeline() {
       templateSuggestion,
       missingness,
       technicianAssignment,
+      posDetection,
+      geolocation,
+      ticketTitleHint,
     };
   };
 }

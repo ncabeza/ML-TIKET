@@ -93,3 +93,4 @@ Consulta `docs/desarrollador.md` para una guía más extensa de los flujos y end
 
 - 📄 Detailed Spanish overview: [`docs/validation-flow-es.md`](docs/validation-flow-es.md)
 - 🤖 Guía de ML para parsear Excel sin perder estructura: [`docs/ml-excel-es.md`](docs/ml-excel-es.md)
+- 🧭 Flujo end-to-end Avant → Cibernos → Operaciones: [`docs/automatizacion-tickets-ml.md`](docs/automatizacion-tickets-ml.md)

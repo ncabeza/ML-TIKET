@@ -42,6 +42,9 @@ export interface MLInsights {
   technician_assignment?: TechnicianAssignmentInsight;
   normalized_preview?: Record<string, unknown[]>;
   normalization_metadata?: Record<string, { total_rows: number; truncated: boolean }>;
+  pos_detection?: POSDetection;
+  geolocation_validation?: GeolocationValidation;
+  ticket_title_hint?: TicketTitleHint;
 }
 
 export interface DiagnosticIssue {
@@ -72,6 +75,29 @@ export interface MissingnessProfile {
   confidence: number;
   imputation_permitted: boolean;
   blockers?: string[];
+}
+
+export interface POSDetection {
+  column?: string;
+  confidence: number;
+  sample_values: string[];
+  normalized_samples: string[];
+  missing_required: boolean;
+  warnings: string[];
+}
+
+export interface GeolocationValidation {
+  address_column?: string;
+  latitude_column?: string;
+  longitude_column?: string;
+  confidence: number;
+  ok: boolean;
+  issues: string[];
+}
+
+export interface TicketTitleHint {
+  template: string;
+  rationale: string;
 }
 
 export interface TechnicianAssignmentMatch {
@@ -198,5 +224,8 @@ export interface PreviewPayload {
   templateSuggestion: TemplateSuggestionResult;
   missingness: MissingnessDetectionResult;
   technicianAssignment: TechnicianAssignmentInsight;
+  posDetection: POSDetection;
+  geolocation: GeolocationValidation;
+  ticketTitleHint: TicketTitleHint;
 }
 

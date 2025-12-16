@@ -83,6 +83,26 @@ describe("import routes", () => {
       },
       missingness: { profile: { signal: "MAR", confidence: 0.5, imputation_permitted: false }, notes: [] },
       technicianAssignment: { matches: [], policy: "REVIEW", notes: [] },
+      posDetection: {
+        column: "POS",
+        confidence: 0.8,
+        sample_values: ["123"],
+        normalized_samples: ["POS-123"],
+        missing_required: false,
+        warnings: [],
+      },
+      geolocation: {
+        address_column: "direccion",
+        latitude_column: undefined,
+        longitude_column: undefined,
+        confidence: 0.72,
+        ok: true,
+        issues: [],
+      },
+      ticketTitleHint: {
+        template: "POS {{POS}} - Incidencia",
+        rationale: "autofill",
+      },
     };
 
     const spy = vi

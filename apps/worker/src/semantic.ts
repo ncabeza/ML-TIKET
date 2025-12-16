@@ -1,8 +1,11 @@
 import {
   ColumnClassification,
+  GeolocationValidation,
   ImportArtifact,
   MissingnessDetectionResult,
+  POSDetection,
   TechnicianAssignmentInsight,
+  TicketTitleHint,
   TemplateSuggestionResult,
 } from "@shared/types";
 import { inferFieldType } from "./nn";
@@ -216,6 +219,22 @@ const IDENTITY_KEYWORDS = [
   "technician",
 ];
 
+const POS_KEYWORDS = [
+  "pos",
+  "terminal",
+  "tpv",
+  "point of sale",
+  "punto de venta",
+  "pos number",
+  "numero pos",
+  "nro pos",
+  "tid",
+];
+
+const ADDRESS_KEYWORDS = ["address", "dirección", "direccion", "domicilio", "ubicación", "ubicacion", "address line"];
+const LATITUDE_KEYWORDS = ["lat", "latitud", "latitude"];
+const LONGITUDE_KEYWORDS = ["lng", "longitud", "longitude", "lon"];
+
 function findIdentityColumn(artifact: ImportArtifact) {
   return artifact.detected_tables
     .flatMap((table) => table.columns)
@@ -259,5 +278,100 @@ export function recommendTechnicianAssignments(
         : "Se detectó una columna de identidad; se recomienda confirmar el mapeo antes de ejecutar la importación.",
       "Las coincidencias se basan en el documento de identidad; cualquier dígito faltante o formato distinto requerirá revisión manual.",
     ],
+  };
+}
+
+function scoreColumnByKeywords(columnName: string, keywords: string[]): number {
+  const normalized = columnName.toLowerCase();
+  const hits = keywords.filter((keyword) => normalized.includes(keyword)).length;
+  if (hits === 0) return 0;
+  if (normalized.includes("pos") || normalized.includes("tpv")) return 0.88;
+  if (hits >= 2) return 0.76;
+  return 0.64;
+}
+
+function findColumnByKeywords(artifact: ImportArtifact, keywords: string[]) {
+  const columns = artifact.detected_tables.flatMap((table) => table.columns);
+  return columns
+    .map((column) => ({ column: column.name, score: scoreColumnByKeywords(column.name, keywords) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)[0];
+}
+
+export function detectPOSField(
+  artifact: ImportArtifact,
+  classifications: ColumnClassification[]
+): POSDetection {
+  const posCandidate = findColumnByKeywords(artifact, POS_KEYWORDS);
+  const classificationMatch = posCandidate
+    ? classifications.find((c) => c.column.toLowerCase() === posCandidate.column.toLowerCase())
+    : undefined;
+
+  const warnings: string[] = [];
+  if (!posCandidate) {
+    warnings.push("No se detectó un campo POS o TID; se bloqueará la creación hasta que el usuario lo ingrese.");
+  } else if (classificationMatch && classificationMatch.type !== "number") {
+    warnings.push(
+      `El campo ${posCandidate.column} parece ser POS pero no es numérico; valida que el formato coincida con el contrato.`
+    );
+  }
+
+  const column = posCandidate?.column;
+  const confidence = posCandidate ? Number(Math.min(0.95, posCandidate.score + 0.05).toFixed(2)) : 0.32;
+  const sampleLabel = column ? `{{${column}}}` : "<POS requerido>";
+  return {
+    column,
+    confidence,
+    sample_values: [sampleLabel, column ? `${sampleLabel}-alt` : ""].filter(Boolean),
+    normalized_samples: column ? [`POS-${column.toUpperCase()}`, `POS-${column.toUpperCase()}-SITE`] : [],
+    missing_required: !column,
+    warnings,
+  };
+}
+
+export function validateGeolocation(
+  artifact: ImportArtifact,
+  posDetection: POSDetection
+): GeolocationValidation {
+  const addressCandidate = findColumnByKeywords(artifact, ADDRESS_KEYWORDS);
+  const latCandidate = findColumnByKeywords(artifact, LATITUDE_KEYWORDS);
+  const lonCandidate = findColumnByKeywords(artifact, LONGITUDE_KEYWORDS);
+
+  const issues: string[] = [];
+  if (!addressCandidate) {
+    issues.push("Falta una columna de dirección; no es posible geolocalizar las incidencias.");
+  }
+  if (!latCandidate || !lonCandidate) {
+    issues.push("No se detectaron coordenadas lat/lon; se usará la dirección para geocodificar.");
+  }
+  if (posDetection.missing_required) {
+    issues.push("El POS es obligatorio para geocodificar correctamente; solicita el dato antes de ejecutar.");
+  }
+
+  const confidencePieces = [addressCandidate?.score ?? 0, latCandidate?.score ?? 0, lonCandidate?.score ?? 0];
+  const confidence = Number(Math.max(...confidencePieces, 0.35).toFixed(2));
+  const ok = Boolean(addressCandidate) && !posDetection.missing_required;
+
+  return {
+    address_column: addressCandidate?.column,
+    latitude_column: latCandidate?.column,
+    longitude_column: lonCandidate?.column,
+    confidence,
+    ok,
+    issues,
+  };
+}
+
+export function buildTicketTitleHint(posDetection: POSDetection): TicketTitleHint {
+  if (posDetection.column) {
+    return {
+      template: `POS {{${posDetection.column}}} - Incidencia reportada`,
+      rationale: "Se detectó un campo POS; se pre-carga en el título para que el técnico lo vea al abrir el ticket.",
+    };
+  }
+
+  return {
+    template: "Ticket sin POS - completa el número antes de asignar",
+    rationale: "No se encontró el número de POS en el Excel; se fuerza al usuario a completarlo antes de crear el ticket.",
   };
 }
