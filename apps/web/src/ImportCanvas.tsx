@@ -1,21 +1,10 @@
 import React from "react";
 import { FieldType, ImportMode, PreviewPayload } from "@shared/types";
-
-type RequiredField = {
-  id: string;
-  label: string;
-  required: boolean;
-  hint?: string;
-  synonyms?: string[];
-};
-
-const normalizeText = (value: string) =>
-  value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^\w\s]/g, "")
-    .trim();
+import {
+  computeColumnGuesses,
+  normalizeText,
+  RequiredField,
+} from "./mappingUtils";
 
 const REQUIRED_FIELDS: RequiredField[] = [
   {
@@ -210,6 +199,15 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
     return keywords;
   }, [requiredFields]);
 
+  const priorityOrder = React.useMemo(() => {
+    const preferredFirst = "direccion";
+    const others = requiredFields
+      .map((field) => field.id)
+      .filter((id) => id !== preferredFirst);
+
+    return [preferredFirst, ...others];
+  }, [requiredFields]);
+
   const availableColumns = React.useMemo(() => {
     if (!preview || !previewHealth.isValid) return [] as string[];
     const detected = preview.artifact.detected_tables.flatMap((table) =>
@@ -223,19 +221,16 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
     [availableColumns],
   );
 
-  const columnGuesses = React.useMemo(() => {
-    const guesses: Record<string, string | null> = {};
-
-    requiredFields.forEach((field) => {
-      const guess = normalizedColumns.find(({ normalized }) =>
-        fieldKeywords[field.id].some((keyword) => normalized.includes(keyword)),
-      );
-
-      guesses[field.id] = guess?.original ?? null;
-    });
-
-    return guesses;
-  }, [fieldKeywords, normalizedColumns, requiredFields]);
+  const columnGuesses = React.useMemo(
+    () =>
+      computeColumnGuesses(
+        requiredFields,
+        normalizedColumns,
+        fieldKeywords,
+        priorityOrder,
+      ),
+    [fieldKeywords, normalizedColumns, priorityOrder, requiredFields],
+  );
 
   const orderedSteps: Step[] = [
     "upload",
