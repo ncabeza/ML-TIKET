@@ -2,8 +2,11 @@ import {
   ColumnClassification,
   ImportArtifact,
   ImportJob,
+  GeolocationValidation,
   MissingnessDetectionResult,
+  POSDetection,
   PreviewPayload,
+  TicketTitleHint,
   TemplateSuggestionResult,
   TechnicianAssignmentInsight,
 } from "@shared/types";
@@ -86,6 +89,46 @@ function buildTechnicianAssignment(
   );
 }
 
+function buildPosDetection(insights?: NonNullable<ImportJob["ml_insights"]>): POSDetection {
+  return (
+    insights?.pos_detection ?? {
+      column: undefined,
+      confidence: 0,
+      sample_values: [],
+      normalized_samples: [],
+      missing_required: true,
+      warnings: ["No POS column detected; user confirmation required before running."],
+    }
+  );
+}
+
+function buildGeolocation(
+  insights?: NonNullable<ImportJob["ml_insights"]>
+): GeolocationValidation {
+  return (
+    insights?.geolocation_validation ?? {
+      address_column: undefined,
+      latitude_column: undefined,
+      longitude_column: undefined,
+      confidence: 0,
+      ok: false,
+      issues: ["No address or POS detected; geolocation unavailable until provided."],
+    }
+  );
+}
+
+function buildTicketTitleHint(
+  insights?: NonNullable<ImportJob["ml_insights"]>
+): TicketTitleHint {
+  return (
+    insights?.ticket_title_hint ?? {
+      template: "Ticket sin POS - completa el número antes de asignar",
+      rationale:
+        "No se encontró el número de POS en el Excel; se fuerza al usuario a completarlo antes de crear el ticket.",
+    }
+  );
+}
+
 export async function queuePreviewJob(job: ImportJob): Promise<PreviewPayload> {
   const result = await requestPreview(job);
 
@@ -102,6 +145,9 @@ export async function queuePreviewJob(job: ImportJob): Promise<PreviewPayload> {
   const templateSuggestion = buildTemplateSuggestion(job, result.ml_insights);
   const missingness = buildMissingness(result.ml_insights);
   const technicianAssignment = buildTechnicianAssignment(result.ml_insights);
+  const posDetection = buildPosDetection(result.ml_insights);
+  const geolocation = buildGeolocation(result.ml_insights);
+  const ticketTitleHint = buildTicketTitleHint(result.ml_insights);
 
   return {
     job: { ...job, status: "PREVIEW_READY" },
@@ -110,6 +156,9 @@ export async function queuePreviewJob(job: ImportJob): Promise<PreviewPayload> {
     templateSuggestion,
     missingness,
     technicianAssignment,
+    posDetection,
+    geolocation,
+    ticketTitleHint,
   } satisfies PreviewPayload;
 }
 
