@@ -112,6 +112,12 @@ export interface ImportCanvasProps {
   onRun(): Promise<void>;
 }
 
+type UXAlert = {
+  title: string;
+  description: string;
+  cta?: string;
+};
+
 export const ImportCanvas: React.FC<ImportCanvasProps> = ({
   preview,
   onUpload,
@@ -411,6 +417,65 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
     }));
   };
 
+  const uxAlerts: UXAlert[] = React.useMemo(() => {
+    if (!preview) return [];
+
+    const alerts: UXAlert[] = [];
+
+    if (!preview.posDetection?.column || preview.posDetection?.missing_required) {
+      alerts.push({
+        title: "Falta Número de POS",
+        description: "No se encuentra un Número de POS para la geolocalización.",
+        cta: "Completa o asigna manualmente el Número de POS antes de continuar.",
+      });
+    }
+
+    if (!previewHealth.isValid) {
+      alerts.push({
+        title: "Formato inválido del Excel",
+        description:
+          previewHealth.message ??
+          "El archivo Excel contiene celdas combinadas o datos faltantes que impiden la importación.",
+        cta: "Revisa el archivo o solicita una corrección automática del formato.",
+      });
+    }
+
+    if (preview.geolocation && !preview.geolocation.ok && preview.geolocation.issues.length) {
+      alerts.push({
+        title: "Inconsistencia entre dirección y POS",
+        description: "El Número de POS no coincide con la dirección proporcionada.",
+        cta: "Valida o actualiza la información antes de importar.",
+      });
+    }
+
+    if (
+      preview.technicianAssignment &&
+      (preview.technicianAssignment.policy === "REVIEW" ||
+        preview.technicianAssignment.matches?.length === 0)
+    ) {
+      alerts.push({
+        title: "Asignación automática no confiable",
+        description:
+          "El Machine Learning no puede asignar el ticket por falta de datos históricos o patrones.",
+        cta: "Informa al usuario que será necesaria la asignación manual.",
+      });
+    }
+
+    if (
+      preview.missingness?.profile.blockers?.length ||
+      preview.missingness?.profile.imputation_permitted === false
+    ) {
+      alerts.push({
+        title: "No se pudo generar el informe final",
+        description:
+          "El informe final no se genera debido a datos faltantes o inconsistencia en el formato.",
+        cta: "Muestra el motivo del error y permite revisar el informe antes de reintentar.",
+      });
+    }
+
+    return alerts;
+  }, [preview, previewHealth.isValid, previewHealth.message]);
+
   return (
     <div className="import-canvas">
       <ol>
@@ -574,6 +639,21 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
       </section>
 
       {error && <p className="error">{error}</p>}
+
+      {uxAlerts.length > 0 && (
+        <section className="ux-alerts">
+          <h3>Posibles errores para control UX</h3>
+          <ul>
+            {uxAlerts.map((alert) => (
+              <li key={alert.title} className="ux-alert">
+                <strong>{alert.title}</strong>
+                <p>{alert.description}</p>
+                {alert.cta && <p className="hint subtle">{alert.cta}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {preview && (
         <section>
