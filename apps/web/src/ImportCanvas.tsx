@@ -403,6 +403,36 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
   const canProceedToTemplate =
     missingRequired.length === 0 && requiredTypeGaps.length === 0;
 
+  const previewSummary = React.useMemo(() => {
+    if (!preview) return null;
+
+    const tables = preview.artifact?.detected_tables ?? [];
+    const totalColumns = tables.reduce(
+      (total, table) => total + (table.columns?.length ?? 0),
+      0,
+    );
+
+    const matchedRequired = requiredFields.filter((field) => columnMapping[field.id])
+      .length;
+    const typedRequired = requiredFields.filter((field) => fieldTypeMapping[field.id])
+      .length;
+
+    const blockers = preview.missingness?.profile.blockers?.length ?? 0;
+
+    return {
+      tableCount: tables.length,
+      columnCount: totalColumns,
+      matchedRequired,
+      typedRequired,
+      blockers,
+    };
+  }, [
+    columnMapping,
+    fieldTypeMapping,
+    preview,
+    requiredFields,
+  ]);
+
   const handleMappingChange = (fieldId: string, value: string) => {
     setColumnMapping((current) => ({
       ...current,
@@ -415,6 +445,15 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
       ...current,
       [fieldId]: value,
     }));
+  };
+
+  const handleResetFlow = () => {
+    setStep("upload");
+    setSelectedMode(null);
+    setError(null);
+    setPreviewHealth({ isValid: true, message: null });
+    setColumnMapping({});
+    setFieldTypeMapping({});
   };
 
   const uxAlerts: UXAlert[] = React.useMemo(() => {
@@ -489,6 +528,42 @@ export const ImportCanvas: React.FC<ImportCanvasProps> = ({
           </li>
         ))}
       </ol>
+
+      <div className="canvas-toolbar">
+        <div>
+          <p className="hint subtle">Visualiza el estado general antes de continuar.</p>
+          {previewSummary ? (
+            <ul className="status-grid">
+              <li>
+                <strong>{previewSummary.tableCount}</strong>
+                <span>tablas detectadas</span>
+              </li>
+              <li>
+                <strong>{previewSummary.columnCount}</strong>
+                <span>columnas totales</span>
+              </li>
+              <li>
+                <strong>{previewSummary.matchedRequired}/{requiredFields.length}</strong>
+                <span>campos obligatorios mapeados</span>
+              </li>
+              <li>
+                <strong>{previewSummary.typedRequired}/{requiredFields.length}</strong>
+                <span>campos obligatorios tipados</span>
+              </li>
+              <li>
+                <strong>{previewSummary.blockers}</strong>
+                <span>bloqueos de calidad detectados</span>
+              </li>
+            </ul>
+          ) : (
+            <p className="hint">Sube un archivo para ver un resumen rápido.</p>
+          )}
+        </div>
+
+        <button type="button" className="ghost" onClick={handleResetFlow}>
+          Reiniciar flujo
+        </button>
+      </div>
 
       <section>
         {step === "upload" && (
