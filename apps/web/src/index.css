@@ -1,0 +1,198 @@
+:root {
+  color-scheme: light dark;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  background: radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.15), transparent 25%),
+    radial-gradient(circle at 80% 0%, rgba(236, 72, 153, 0.15), transparent 25%),
+    #0f172a;
+}
+
+.app-shell {
+  width: min(1100px, 95vw);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hero {
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.2), rgba(236, 72, 153, 0.2));
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.hero p {
+  margin: 4px 0;
+  color: #cbd5e1;
+}
+
+.panel {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.actions button,
+.actions label {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions button.secondary {
+  background: transparent;
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.actions button:hover,
+.actions label:hover {
+  filter: brightness(1.1);
+}
+
+.helper {
+  color: #cbd5e1;
+  margin-top: 6px;
+}
+
+.toast {
+  background: rgba(22, 163, 74, 0.16);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  color: #bbf7d0;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.import-canvas {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.import-canvas ol {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.import-canvas ol li {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  cursor: pointer;
+  background: rgba(30, 41, 59, 0.6);
+}
+
+.import-canvas ol li.active {
+  background: rgba(59, 130, 246, 0.35);
+  border-color: rgba(59, 130, 246, 0.6);
+}
+
+.import-canvas section,
+.import-canvas .mappings {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.import-canvas table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.import-canvas th,
+.import-canvas td {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 8px;
+  text-align: left;
+}
+
+.import-canvas .error {
+  color: #fca5a5;
+  font-weight: 700;
+}
+
+.import-canvas select,
+.import-canvas input,
+.import-canvas button {
+  margin-top: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(30, 41, 59, 0.6);
+  color: #e2e8f0;
+}
+
+.import-canvas button {
+  background: #2563eb;
+  border: none;
+  cursor: pointer;
+}
+
+.import-canvas button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.import-canvas pre {
+  background: rgba(15, 23, 42, 0.65);
+  padding: 10px;
+  border-radius: 10px;
+  overflow-x: auto;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.import-canvas .ux-alerts ul {
+  padding-left: 16px;
+}
+
+.import-canvas .ux-alerts li {
+  margin-bottom: 10px;
+}
+
+.subtle {
+  color: #cbd5e1;
+}
