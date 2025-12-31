@@ -29,21 +29,40 @@ class MLPreview:
 
 
 def _split_column_types(frame: pd.DataFrame) -> Tuple[pd.DataFrame, List[str], List[str]]:
-    """Infer numeric vs categorical columns using simple heuristics."""
+    """Infer numeric vs categorical columns using enriched heuristics."""
 
     numeric_columns: List[str] = []
     categorical_columns: List[str] = []
     coerced = frame.copy()
 
     for column in frame.columns:
-        series = pd.to_numeric(frame[column], errors="coerce")
-        numeric_share = float(series.notna().mean()) if len(series) else 0.0
-        unique_values = frame[column].nunique(dropna=True)
+        raw_series = frame[column]
+        as_text = raw_series.astype(str).str.strip()
+        numeric_series = pd.to_numeric(as_text, errors="coerce")
+        numeric_share = float(numeric_series.notna().mean()) if len(numeric_series) else 0.0
+        unique_values = raw_series.nunique(dropna=True)
+        date_parsed = pd.to_datetime(as_text, errors="coerce")
+        date_share = float(date_parsed.notna().mean()) if len(date_parsed) else 0.0
+        boolean_share = float(
+            as_text.str.lower().isin({"true", "false", "0", "1", "yes", "no", "si", "sí"}).mean()
+        )
 
-        if numeric_share > 0.6 and unique_values > 3:
-            coerced[column] = series
+        is_date_like = date_share > 0.55 and numeric_share < 0.5
+        is_numeric_like = numeric_share > 0.55 or (numeric_share > 0.35 and unique_values > 3)
+        is_boolean_like = boolean_share > 0.65
+
+        if is_date_like:
+            coerced[column] = date_parsed.map(lambda value: value.timestamp() if pd.notna(value) else np.nan)
+            numeric_columns.append(column)
+        elif is_numeric_like:
+            coerced[column] = numeric_series
             numeric_columns.append(column)
         else:
+            if is_boolean_like:
+                coerced[column] = as_text.str.lower().replace(
+                    {"true": "true", "1": "true", "yes": "true", "si": "true", "sí": "true",
+                     "false": "false", "0": "false", "no": "false"}
+                )
             categorical_columns.append(column)
 
     return coerced, numeric_columns, categorical_columns
@@ -160,6 +179,7 @@ def build_ml_preview(frame: pd.DataFrame, *, feature_preview_rows: int = 25) -> 
 
     preview = feature_matrix[:feature_preview_rows].tolist()
     pipeline_steps = [
+        "Preproceso: normalización de encabezados, poda de filas/columnas residuales y análisis de patrones (numérico/fecha/booleano)",
         "Numeric: median imputation + Z-score scaling",
         "Categorical: most-frequent imputation + one-hot encoding (drop_first)",
         "Outliers: capped with IQR rule",

@@ -7,7 +7,7 @@ pipeline.
 """
 from __future__ import annotations
 from io import BytesIO
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
 
 import asyncio
 import pandas as pd
@@ -25,6 +25,102 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+
+
+def _normalize_headers(columns: List[Any]) -> List[str]:
+    """Create stable, non-empty column headers and disambiguate duplicates."""
+
+    normalized: List[str] = []
+    seen: Dict[str, int] = {}
+    for idx, column in enumerate(columns):
+        label = str(column).strip() if column is not None else ""
+        if not label:
+            label = f"col_{idx + 1}"
+
+        count = seen.get(label, 0)
+        if count:
+            label = f"{label}__{count}"
+        seen[label] = count + 1
+        normalized.append(label)
+
+    return normalized
+
+
+def _analyze_column_patterns(frame: pd.DataFrame) -> Dict[str, Dict[str, float]]:
+    """Profile each column to detect dominant data patterns and noise."""
+
+    patterns: Dict[str, Dict[str, float]] = {}
+    boolean_truthy = {"true", "1", "yes", "si", "sí"}
+    boolean_falsy = {"false", "0", "no"}
+
+    for column in frame.columns:
+        series = frame[column].dropna()
+        if series.empty:
+            patterns[column] = {
+                "numeric_ratio": 0.0,
+                "date_ratio": 0.0,
+                "boolean_ratio": 0.0,
+                "unique_ratio": 0.0,
+            }
+            continue
+
+        as_text = series.astype(str).str.strip()
+        numeric_ratio = float(pd.to_numeric(as_text, errors="coerce").notna().mean())
+        date_ratio = float(pd.to_datetime(as_text, errors="coerce").notna().mean())
+        boolean_ratio = float(
+            as_text.str.lower().isin(boolean_truthy.union(boolean_falsy)).mean()
+        )
+        unique_ratio = float(as_text.nunique(dropna=True) / max(len(as_text), 1))
+
+        patterns[column] = {
+            "numeric_ratio": numeric_ratio,
+            "date_ratio": date_ratio,
+            "boolean_ratio": boolean_ratio,
+            "unique_ratio": unique_ratio,
+        }
+
+    return patterns
+
+
+def _clean_sheet_dataframe(
+    frame: pd.DataFrame,
+    *,
+    min_column_coverage: float = 0.12,
+    min_row_signal: float = 0.18,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Normalize headers, trim noise and drop sparse rows/columns.
+
+    The heuristic aggressively removes fully empty rows and residual ranges while
+    keeping informative cells that help the ML model infer structure. Coverage
+    thresholds are intentionally permissive to avoid over-pruning thin sheets.
+    """
+
+    normalized = frame.copy()
+    normalized.columns = _normalize_headers(list(normalized.columns))
+    normalized = normalized.applymap(
+        lambda value: value.strip() if isinstance(value, str) else value
+    )
+    normalized.replace({"": pd.NA, " ": pd.NA}, inplace=True)
+
+    coverage = normalized.notna().mean().to_dict()
+    columns_to_keep = [
+        col for col, cov in coverage.items() if cov >= min_column_coverage
+    ]
+    pruned = normalized[columns_to_keep] if columns_to_keep else normalized
+    dropped_columns = len(normalized.columns) - len(pruned.columns)
+
+    row_signal = pruned.notna().mean(axis=1)
+    filtered = pruned.loc[row_signal >= min_row_signal].reset_index(drop=True)
+    dropped_rows = int(len(pruned) - len(filtered))
+
+    pattern_signals = _analyze_column_patterns(filtered)
+
+    return filtered, {
+        "dropped_rows": dropped_rows,
+        "dropped_columns": dropped_columns,
+        "column_coverage": {k: float(v) for k, v in coverage.items()},
+        "pattern_signals": pattern_signals,
+    }
 
 
 def _load_excel(
@@ -74,8 +170,9 @@ def _load_excel(
             engine=workbook.engine,
         )
 
-        columns: List[str] = list(frame.columns)
-        filled = frame.fillna("")
+        cleaned, cleanup_report = _clean_sheet_dataframe(frame)
+        columns: List[str] = list(cleaned.columns)
+        filled = cleaned.fillna("")
         records = filled.to_dict(orient="records")
         full_row_count = len(records)
 
@@ -99,6 +196,10 @@ def _load_excel(
                 "preview_rows": preview_rows,
                 "total_rows": total_rows,
                 "truncated": truncated,
+                "dropped_rows": cleanup_report["dropped_rows"],
+                "dropped_columns": cleanup_report["dropped_columns"],
+                "column_coverage": cleanup_report["column_coverage"],
+                "pattern_signals": cleanup_report["pattern_signals"],
             }
         )
 
@@ -143,7 +244,8 @@ def _load_sheet_frames(
             nrows=max_rows_per_sheet,
             engine=workbook.engine,
         )
-        frames[sheet_name] = frame
+        cleaned, _ = _clean_sheet_dataframe(frame)
+        frames[sheet_name] = cleaned
 
     if not frames:
         raise HTTPException(status_code=404, detail="No sheets found in workbook")
@@ -251,6 +353,10 @@ class SheetPreview(BaseModel):
     preview_rows: List[Dict[str, Any]]
     total_rows: int
     truncated: bool
+    dropped_rows: int
+    dropped_columns: int
+    column_coverage: Dict[str, float]
+    pattern_signals: Dict[str, Dict[str, float]]
 
 
 class SheetCursor(BaseModel):
