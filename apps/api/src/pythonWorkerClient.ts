@@ -4,6 +4,13 @@ import { ImportJob, MLInsights } from "@shared/types";
 const DEFAULT_WORKER_URL = "http://localhost:8000";
 const DEFAULT_WORKER_TIMEOUT_MS = 15_000;
 const DEFAULT_WORKER_RETRIES = 2;
+const MIN_TIMEOUT_MS = 500;
+
+export interface PythonWorkerConfig {
+  url: string;
+  timeoutMs: number;
+  retries: number;
+}
 
 interface PythonWorkerPreviewResponse {
   structural_artifact_id?: string;
@@ -18,7 +25,7 @@ interface PythonWorkerNormalizeResponse {
   navigation?: Record<string, unknown> | null;
 }
 
-class PythonWorkerRequestError extends Error {
+export class PythonWorkerRequestError extends Error {
   retryable: boolean;
 
   constructor(message: string, retryable = false) {
@@ -27,28 +34,35 @@ class PythonWorkerRequestError extends Error {
   }
 }
 
-function getWorkerUrl() {
-  return process.env.PYTHON_WORKER_URL || DEFAULT_WORKER_URL;
+function parseNumberFromEnv(value: string | undefined, fallback: number, minimum: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < minimum) return fallback;
+  return parsed;
 }
 
-function getTimeoutMs() {
-  return Number(process.env.PYTHON_WORKER_TIMEOUT_MS || DEFAULT_WORKER_TIMEOUT_MS);
+export function resolveWorkerConfig(env = process.env): PythonWorkerConfig {
+  return {
+    url: env.PYTHON_WORKER_URL?.trim() || DEFAULT_WORKER_URL,
+    timeoutMs: parseNumberFromEnv(env.PYTHON_WORKER_TIMEOUT_MS, DEFAULT_WORKER_TIMEOUT_MS, MIN_TIMEOUT_MS),
+    retries: Math.floor(parseNumberFromEnv(env.PYTHON_WORKER_RETRIES, DEFAULT_WORKER_RETRIES, 0)),
+  };
 }
 
-function getRetryCount() {
-  return Number(process.env.PYTHON_WORKER_RETRIES || DEFAULT_WORKER_RETRIES);
-}
-
-async function requestWithRetry<T>(fn: () => Promise<T>, endpoint: string, attempt = 0): Promise<T> {
+async function requestWithRetry<T>(
+  fn: () => Promise<T>,
+  endpoint: string,
+  config: PythonWorkerConfig,
+  attempt = 0
+): Promise<T> {
   try {
     return await fn();
   } catch (error) {
     const retryable =
       (error instanceof PythonWorkerRequestError && error.retryable) ||
       (error instanceof Error && ("code" in error || error.name === "AbortError"));
-    if (attempt < getRetryCount() && retryable) {
+    if (attempt < config.retries && retryable) {
       await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
-      return requestWithRetry(fn, endpoint, attempt + 1);
+      return requestWithRetry(fn, endpoint, config, attempt + 1);
     }
 
     console.error(
@@ -66,17 +80,27 @@ async function requestWithRetry<T>(fn: () => Promise<T>, endpoint: string, attem
 async function postMultipart(
   endpoint: string,
   job: ImportJob,
+  config: PythonWorkerConfig,
   sheet?: string
 ): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), getTimeoutMs());
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+
+  try {
+    await fs.access(job.upload.storageKey);
+  } catch (error) {
+    throw new PythonWorkerRequestError(
+      `File not found for upload: ${job.upload.storageKey}`,
+      false
+    );
+  }
 
   const buffer = await fs.readFile(job.upload.storageKey);
   const form = new FormData();
   const blob = new Blob([buffer]);
   form.append("file", blob, job.upload.filename);
 
-  const url = new URL(endpoint, getWorkerUrl());
+  const url = new URL(endpoint, config.url);
   if (sheet) url.searchParams.set("sheet", sheet);
 
   try {
@@ -90,9 +114,13 @@ async function postMultipart(
   }
 }
 
-export async function requestPreview(job: ImportJob, sheet?: string): Promise<PythonWorkerPreviewResponse> {
+export async function requestPreview(
+  job: ImportJob,
+  sheet?: string,
+  config: PythonWorkerConfig = resolveWorkerConfig()
+): Promise<PythonWorkerPreviewResponse> {
   return requestWithRetry(async () => {
-    const response = await postMultipart("/preview", job, sheet);
+    const response = await postMultipart("/preview", job, config, sheet);
     if (!response.ok) {
       const body = await response.text();
       throw new PythonWorkerRequestError(
@@ -101,12 +129,16 @@ export async function requestPreview(job: ImportJob, sheet?: string): Promise<Py
       );
     }
     return (await response.json()) as PythonWorkerPreviewResponse;
-  }, "/preview");
+  }, "/preview", config);
 }
 
-export async function requestNormalize(job: ImportJob, sheet?: string): Promise<PythonWorkerNormalizeResponse> {
+export async function requestNormalize(
+  job: ImportJob,
+  sheet?: string,
+  config: PythonWorkerConfig = resolveWorkerConfig()
+): Promise<PythonWorkerNormalizeResponse> {
   return requestWithRetry(async () => {
-    const response = await postMultipart("/normalize", job, sheet);
+    const response = await postMultipart("/normalize", job, config, sheet);
     if (!response.ok) {
       const body = await response.text();
       throw new PythonWorkerRequestError(
@@ -115,5 +147,5 @@ export async function requestNormalize(job: ImportJob, sheet?: string): Promise<
       );
     }
     return (await response.json()) as PythonWorkerNormalizeResponse;
-  }, "/normalize");
+  }, "/normalize", config);
 }
