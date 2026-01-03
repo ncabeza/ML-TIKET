@@ -1,4 +1,5 @@
 import { ImportJob } from "@shared/types";
+import { scheduleAssignments } from "./assignment";
 
 export async function validateHardRules(job: ImportJob): Promise<{ ok: boolean; errorFileKey?: string }> {
   if (!job.template_resolution?.template_version_id) {
@@ -22,9 +23,15 @@ export async function validateHardRules(job: ImportJob): Promise<{ ok: boolean; 
 
 export async function createTicketsInBatches(job: ImportJob) {
   // Idempotency via row_hash would be implemented here.
+  const ticketsToCreate = 10;
+  const tickets = Array.from({ length: ticketsToCreate }, (_, index) => `${job._id}-ticket-${index + 1}`);
+
+  scheduleAssignments(job, tickets);
+
   return {
-    created: 10,
+    created: ticketsToCreate,
     skipped: 0,
     template_version_id: job.template_resolution?.template_version_id,
+    assignments_queued: ticketsToCreate,
   };
 }
